@@ -1,0 +1,17 @@
+
+{
+  "placeholderImages": [
+    {
+      "id": "logo",
+      "description": "Level Up New Logo",
+      "imageUrl": "https://picsum.photos/seed/levelup/400/400",
+      "imageHint": "educational logo"
+    },
+    {
+      "id": "login-bg",
+      "description": "Educational background",
+      "imageUrl": "https://picsum.photos/seed/edu/1200/800",
+      "imageHint": "university building"
+    }
+  ]
+}
