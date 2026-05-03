@@ -42,7 +42,7 @@ export default function LoginPage() {
 
   return (
     <div className="relative flex min-h-screen items-center justify-center bg-muted p-4">
-      {bg && (
+      {bg?.imageUrl && (
         <div className="absolute inset-0 z-0">
           <Image 
             src={bg.imageUrl} 
@@ -57,13 +57,15 @@ export default function LoginPage() {
       <Card className="relative z-10 w-full max-w-md shadow-2xl border-t-8 border-primary overflow-hidden">
         <CardHeader className="text-center space-y-4 pt-10">
           <div className="mx-auto w-24 h-24 relative rounded-full overflow-hidden bg-white p-1 shadow-inner">
-            <Image 
-              src={logo?.imageUrl || ""} 
-              alt="Level Up Aceh Logo" 
-              fill 
-              className="object-contain"
-              data-ai-hint="educational logo"
-            />
+            {logo?.imageUrl && (
+              <Image 
+                src={logo.imageUrl} 
+                alt="Level Up Aceh Logo" 
+                fill 
+                className="object-contain"
+                data-ai-hint="educational logo"
+              />
+            )}
           </div>
           <div>
             <CardTitle className="text-3xl font-bold font-headline text-primary">Level Up Aceh Private</CardTitle>
