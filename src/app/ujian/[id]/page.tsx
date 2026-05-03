@@ -1,18 +1,25 @@
+
 'use client';
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ProtectedRoute } from "@/components/auth/Protected-route";
 import { useAuth } from "@/contexts/auth-context";
-import { db } from "@/lib/firebase-config";
 import { 
   doc, 
   getDoc, 
-  setDoc, 
   collection, 
   getDocs,
-  addDoc
+  query,
+  orderBy,
+  serverTimestamp
 } from "firebase/firestore";
+import { db } from "@/lib/firebase-config";
+import { 
+  setDocumentNonBlocking, 
+  updateDocumentNonBlocking, 
+  addDocumentNonBlocking 
+} from "@/firebase/non-blocking-updates";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter, CardDescription } from "@/components/ui/card";
 import { LatexRenderer } from "@/components/LatexRenderer";
@@ -31,8 +38,6 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { errorEmitter } from '@/firebase/error-emitter';
-import { FirestorePermissionError } from '@/firebase/errors';
 
 export default function UjianPage() {
   const { id: examId } = useParams();
@@ -49,22 +54,19 @@ export default function UjianPage() {
   const [timeLeft, setTimeLeft] = useState(3600);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Refs for tracking changes
+  const lastSavedIndex = useRef<number>(0);
+
   // SECURITY: Disable right-click and selection
   useEffect(() => {
-    const handleContextMenu = (e: MouseEvent) => e.preventDefault();
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && (e.key === 'c' || e.key === 'v' || e.key === 's' || e.key === 'p' || e.key === 'a')) {
-        e.preventDefault();
-      }
-    };
-    
-    document.addEventListener("contextmenu", handleContextMenu);
-    document.addEventListener("keydown", handleKeyDown);
+    const preventDefault = (e: Event) => e.preventDefault();
+    document.addEventListener("contextmenu", preventDefault);
+    document.addEventListener("selectstart", preventDefault);
     document.body.classList.add("no-select");
 
     return () => {
-      document.removeEventListener("contextmenu", handleContextMenu);
-      document.removeEventListener("keydown", handleKeyDown);
+      document.removeEventListener("contextmenu", preventDefault);
+      document.removeEventListener("selectstart", preventDefault);
       document.body.classList.remove("no-select");
     };
   }, []);
@@ -82,13 +84,7 @@ export default function UjianPage() {
             createdAt: new Date().toISOString()
           };
           
-          addDoc(warningRef, warningData).catch(err => {
-            errorEmitter.emit('permission-error', new FirestorePermissionError({
-              path: warningRef.path,
-              operation: 'create',
-              requestResourceData: warningData
-            }));
-          });
+          addDocumentNonBlocking(warningRef, warningData);
           
           toast({
             variant: "destructive",
@@ -113,17 +109,25 @@ export default function UjianPage() {
         if (examDoc.exists()) {
           const examData = examDoc.data();
           setExam(examData);
-          setQuestions(examData.questions || []);
+          
+          // Fetch questions from subcollection
+          const questionsRef = collection(db, "exams", examId as string, "questions");
+          const qSnap = await getDocs(query(questionsRef, orderBy("createdAt", "asc")));
+          const qList = qSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          setQuestions(qList);
           
           setTimeLeft(examData.durationMinutes ? examData.durationMinutes * 60 : 3600);
 
+          // Check for existing session
           const sessionRef = doc(db, "users", user.uid, "examSessions", examId as string);
           const sessionSnap = await getDoc(sessionRef);
           
           if (sessionSnap.exists()) {
             const sessionData = sessionSnap.data();
             setCurrentIndex(sessionData.currentQuestionIndex || 0);
+            lastSavedIndex.current = sessionData.currentQuestionIndex || 0;
             
+            // Load answers
             const answersRef = collection(db, "users", user.uid, "examSessions", examId as string, "examAnswers");
             const answersSnap = await getDocs(answersRef);
             const loadedAnswers: any = {};
@@ -131,11 +135,12 @@ export default function UjianPage() {
               const data = doc.data();
               loadedAnswers[data.questionId] = { 
                 choice: String.fromCharCode(65 + data.chosenAnswerIndex), 
-                isFlagged: data.isFlagged 
+                isFlagged: data.isFlagged || false
               };
             });
             setAnswers(loadedAnswers);
           } else {
+            // Create new session
             const initialSession = {
               id: examId,
               studentId: user.uid,
@@ -148,17 +153,11 @@ export default function UjianPage() {
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString()
             };
-            setDoc(sessionRef, initialSession).catch(err => {
-              errorEmitter.emit('permission-error', new FirestorePermissionError({
-                path: sessionRef.path,
-                operation: 'create',
-                requestResourceData: initialSession
-              }));
-            });
+            setDocumentNonBlocking(sessionRef, initialSession, { merge: true });
           }
         }
       } catch (err) {
-        console.error(err);
+        console.error("Error fetching data:", err);
       } finally {
         setLoading(false);
       }
@@ -167,7 +166,7 @@ export default function UjianPage() {
     fetchData();
   }, [examId, user]);
 
-  // TIMER
+  // Timer Countdown
   useEffect(() => {
     if (loading || isSubmitting) return;
     const timer = setInterval(() => {
@@ -183,31 +182,29 @@ export default function UjianPage() {
     return () => clearInterval(timer);
   }, [loading, isSubmitting]);
 
-  const saveProgress = useCallback((qIdx: number) => {
+  // Auto-save current question index
+  const saveIndex = useCallback((qIdx: number) => {
     if (!user || !examId) return;
     const sessionRef = doc(db, "users", user.uid, "examSessions", examId as string);
-    const updateData = { 
+    updateDocumentNonBlocking(sessionRef, { 
       currentQuestionIndex: qIdx,
       updatedAt: new Date().toISOString() 
-    };
-    setDoc(sessionRef, updateData, { merge: true }).catch(err => {
-       errorEmitter.emit('permission-error', new FirestorePermissionError({
-        path: sessionRef.path,
-        operation: 'update',
-        requestResourceData: updateData
-      }));
     });
+    lastSavedIndex.current = qIdx;
   }, [user, examId]);
 
   const handleSelectAnswer = (value: string) => {
+    if (!user || !examId) return;
     const q = questions[currentIndex];
-    const qId = q.id || `q_${currentIndex}`;
+    const qId = q.id;
+    
     const newAnswers = { 
       ...answers, 
       [qId]: { ...answers[qId], choice: value } 
     };
     setAnswers(newAnswers);
 
+    // Auto-save answer to Firestore
     const answerRef = doc(db, "users", user.uid, "examSessions", examId as string, "examAnswers", qId);
     const answerData = {
       id: qId,
@@ -219,18 +216,13 @@ export default function UjianPage() {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
-    setDoc(answerRef, answerData, { merge: true }).catch(err => {
-       errorEmitter.emit('permission-error', new FirestorePermissionError({
-        path: answerRef.path,
-        operation: 'write',
-        requestResourceData: answerData
-      }));
-    });
+    setDocumentNonBlocking(answerRef, answerData, { merge: true });
   };
 
   const handleToggleFlag = () => {
+    if (!user || !examId) return;
     const q = questions[currentIndex];
-    const qId = q.id || `q_${currentIndex}`;
+    const qId = q.id;
     const newFlag = !answers[qId]?.isFlagged;
     
     const newAnswers = { 
@@ -240,12 +232,9 @@ export default function UjianPage() {
     setAnswers(newAnswers);
 
     const answerRef = doc(db, "users", user.uid, "examSessions", examId as string, "examAnswers", qId);
-    setDoc(answerRef, { isFlagged: newFlag, updatedAt: new Date().toISOString() }, { merge: true }).catch(err => {
-      errorEmitter.emit('permission-error', new FirestorePermissionError({
-        path: answerRef.path,
-        operation: 'update',
-        requestResourceData: { isFlagged: newFlag }
-      }));
+    updateDocumentNonBlocking(answerRef, { 
+      isFlagged: newFlag, 
+      updatedAt: new Date().toISOString() 
     });
   };
 
@@ -253,7 +242,7 @@ export default function UjianPage() {
     if (currentIndex < questions.length - 1) {
       const nextIdx = currentIndex + 1;
       setCurrentIndex(nextIdx);
-      saveProgress(nextIdx);
+      saveIndex(nextIdx);
     }
   };
 
@@ -261,7 +250,7 @@ export default function UjianPage() {
     if (currentIndex > 0) {
       const prevIdx = currentIndex - 1;
       setCurrentIndex(prevIdx);
-      saveProgress(prevIdx);
+      saveIndex(prevIdx);
     }
   };
 
@@ -277,9 +266,11 @@ export default function UjianPage() {
     
     try {
       let correct = 0;
-      questions.forEach((q, idx) => {
-        const qId = q.id || `q_${idx}`;
-        if (answers[qId]?.choice === q.correct_answer) correct++;
+      questions.forEach((q) => {
+        const qId = q.id;
+        if (answers[qId]?.choice === String.fromCharCode(65 + q.correctAnswerIndex)) {
+          correct++;
+        }
       });
 
       const resultRef = doc(db, "users", user.uid, "results", examId as string);
@@ -290,7 +281,7 @@ export default function UjianPage() {
         examSessionId: examId,
         submissionTime: new Date().toISOString(),
         totalScore: Math.round((correct / questions.length) * 100),
-        weightedScore: correct,
+        weightedScore: correct, // IRT logic could be more complex here
         correctAnswerCount: correct,
         incorrectAnswerCount: questions.length - correct,
         unansweredCount: questions.length - Object.keys(answers).length,
@@ -300,7 +291,7 @@ export default function UjianPage() {
         updatedAt: new Date().toISOString()
       };
 
-      await setDoc(resultRef, resultData);
+      await setDocumentNonBlocking(resultRef, resultData, { merge: true });
 
       toast({
         title: "Ujian Selesai!",
@@ -346,7 +337,7 @@ export default function UjianPage() {
                 <Clock className="h-6 w-6" />
                 {formatTime(timeLeft)}
               </div>
-              <Button variant="destructive" size="lg" onClick={handleSubmit} disabled={isSubmitting} className="font-bold px-8">
+              <Button variant="destructive" size="lg" onClick={handleSubmit} disabled={isSubmitting} className="font-bold px-8 bg-primary hover:bg-primary/90">
                 SELESAI
               </Button>
             </div>
@@ -362,7 +353,7 @@ export default function UjianPage() {
                 <div className="space-y-2">
                   <CardTitle className="text-2xl font-bold">PERINGATAN KERAS!</CardTitle>
                   <p className="text-muted-foreground font-medium">
-                    Anda terdeteksi meninggalkan halaman ujian. Klik tombol di bawah untuk kembali. Kejadian ini dicatat secara otomatis oleh sistem kami.
+                    Anda terdeteksi meninggalkan halaman ujian. Kejadian ini dicatat otomatis. Klik tombol di bawah untuk kembali.
                   </p>
                 </div>
                 <Button className="w-full bg-primary h-14 text-xl font-bold" onClick={() => setIsBlurred(false)}>
@@ -381,14 +372,12 @@ export default function UjianPage() {
                     <BookOpen className="h-4 w-4 text-primary" />
                     NAVIGASI SOAL
                   </CardTitle>
-                  <CardDescription>Pilih nomor untuk melihat soal</CardDescription>
                 </CardHeader>
                 <CardContent className="pt-6">
                   <div className="grid grid-cols-5 gap-3">
-                    {questions.map((_, i) => {
-                      const qId = questions[i].id || `q_${i}`;
-                      const hasAnswer = !!answers[qId]?.choice;
-                      const isFlagged = answers[qId]?.isFlagged;
+                    {questions.map((q, i) => {
+                      const hasAnswer = !!answers[q.id]?.choice;
+                      const isFlagged = answers[q.id]?.isFlagged;
                       const isActive = currentIndex === i;
 
                       return (
@@ -396,7 +385,7 @@ export default function UjianPage() {
                           key={i}
                           onClick={() => {
                             setCurrentIndex(i);
-                            saveProgress(i);
+                            saveIndex(i);
                           }}
                           className={cn(
                             "h-12 rounded-lg text-sm font-black transition-all border-2 shadow-sm flex items-center justify-center relative",
@@ -445,13 +434,13 @@ export default function UjianPage() {
                       onClick={handleToggleFlag}
                       className={cn(
                         "gap-2 font-bold transition-all px-6 border-2",
-                        answers[currentQuestion?.id || `q_${currentIndex}`]?.isFlagged 
+                        answers[currentQuestion?.id]?.isFlagged 
                           ? "bg-secondary text-secondary-foreground border-secondary" 
                           : "text-muted-foreground hover:border-primary/50"
                       )}
                     >
-                      <Flag className={cn("h-4 w-4", answers[currentQuestion?.id || `q_${currentIndex}`]?.isFlagged && "fill-current")} />
-                      {answers[currentQuestion?.id || `q_${currentIndex}`]?.isFlagged ? "HAPUS TANDA" : "RAGU-RAGU"}
+                      <Flag className={cn("h-4 w-4", answers[currentQuestion?.id]?.isFlagged && "fill-current")} />
+                      {answers[currentQuestion?.id]?.isFlagged ? "HAPUS TANDA" : "RAGU-RAGU"}
                     </Button>
                   </div>
                   <div className="text-xl leading-relaxed text-foreground font-semibold">
@@ -461,13 +450,13 @@ export default function UjianPage() {
                 
                 <CardContent className="flex-1 p-8 bg-muted/5">
                   <RadioGroup 
-                    value={answers[currentQuestion?.id || `q_${currentIndex}`]?.choice || ""} 
+                    value={answers[currentQuestion?.id]?.choice || ""} 
                     onValueChange={handleSelectAnswer}
                     className="grid grid-cols-1 gap-5"
                   >
                     {currentQuestion?.options?.map((opt: string, i: number) => {
                       const optKey = String.fromCharCode(65 + i);
-                      const isSelected = answers[currentQuestion?.id || `q_${currentIndex}`]?.choice === optKey;
+                      const isSelected = answers[currentQuestion?.id]?.choice === optKey;
                       
                       return (
                         <div 
@@ -514,11 +503,11 @@ export default function UjianPage() {
                   
                   <div className="flex gap-4">
                     {currentIndex < questions.length - 1 ? (
-                      <Button onClick={handleNext} className="bg-primary hover:bg-primary/90 gap-3 h-14 px-10 text-xl font-black shadow-xl transition-all active:scale-95">
+                      <Button onClick={handleNext} className="bg-primary hover:bg-primary/90 gap-3 h-14 px-10 text-xl font-black shadow-xl transition-all active:scale-95 text-white">
                         SIMPAN & LANJUTKAN <ChevronRight className="h-6 w-6" />
                       </Button>
                     ) : (
-                      <Button onClick={handleSubmit} disabled={isSubmitting} className="bg-primary hover:bg-primary/90 gap-3 h-14 px-10 text-xl font-black shadow-xl transition-all active:scale-95">
+                      <Button onClick={handleSubmit} disabled={isSubmitting} className="bg-primary hover:bg-primary/90 gap-3 h-14 px-10 text-xl font-black shadow-xl transition-all active:scale-95 text-white">
                         {isSubmitting ? "MENGIRIM..." : "KIRIM JAWABAN"} <CheckCircle2 className="h-6 w-6" />
                       </Button>
                     )}
