@@ -1,12 +1,12 @@
 
 "use client";
 
-import { useAuth } from "@/contexts/auth-context";
+import { useAppAuth } from "@/contexts/auth-context";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 
 export default function Home() {
-  const { user, loading } = useAuth();
+  const { user, loading } = useAppAuth();
   const router = useRouter();
 
   useEffect(() => {

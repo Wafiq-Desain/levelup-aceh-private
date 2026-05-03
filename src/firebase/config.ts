@@ -1,8 +1,9 @@
 export const firebaseConfig = {
-  "projectId": "studio-5970366270-39ecb",
-  "appId": "1:342107627585:web:1a8aa7bc0f7467bb8926c0",
-  "apiKey": "AIzaSyAa3SKtP3wZJCDac4Sf9ASaLACjYHTlAV0",
-  "authDomain": "studio-5970366270-39ecb.firebaseapp.com",
-  "measurementId": "",
-  "messagingSenderId": "342107627585"
+  apiKey: "AIzaSyDiGpXu1TsPIa25Rm5N7OUTNCnfnAO8QTE",
+  authDomain: "levelup-aceh-private.firebaseapp.com",
+  projectId: "levelup-aceh-private",
+  storageBucket: "levelup-aceh-private.firebasestorage.app",
+  messagingSenderId: "489376624549",
+  appId: "1:489376624549:web:a1d4009c382003fbc0824c",
+  measurementId: "G-YRWP1N697E"
 };

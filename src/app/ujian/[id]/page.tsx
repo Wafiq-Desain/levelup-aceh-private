@@ -4,24 +4,23 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ProtectedRoute } from "@/components/auth/Protected-route";
-import { useAuth } from "@/contexts/auth-context";
+import { useAppAuth } from "@/contexts/auth-context";
 import { 
   doc, 
   getDoc, 
   collection, 
   getDocs,
   query,
-  orderBy,
-  serverTimestamp
+  orderBy
 } from "firebase/firestore";
-import { db } from "@/lib/firebase-config";
+import { useFirestore } from "@/firebase";
 import { 
   setDocumentNonBlocking, 
   updateDocumentNonBlocking, 
   addDocumentNonBlocking 
 } from "@/firebase/non-blocking-updates";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardFooter, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { LatexRenderer } from "@/components/LatexRenderer";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
@@ -41,7 +40,8 @@ import { cn } from "@/lib/utils";
 
 export default function UjianPage() {
   const { id: examId } = useParams();
-  const { user } = useAuth();
+  const { user } = useAppAuth();
+  const db = useFirestore();
   const router = useRouter();
   const { toast } = useToast();
 
@@ -54,10 +54,8 @@ export default function UjianPage() {
   const [timeLeft, setTimeLeft] = useState(3600);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Refs for tracking changes
   const lastSavedIndex = useRef<number>(0);
 
-  // SECURITY: Disable right-click and selection
   useEffect(() => {
     const preventDefault = (e: Event) => e.preventDefault();
     document.addEventListener("contextmenu", preventDefault);
@@ -71,7 +69,6 @@ export default function UjianPage() {
     };
   }, []);
 
-  // SECURITY: Detect tab switching
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.hidden) {
@@ -97,9 +94,8 @@ export default function UjianPage() {
 
     document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
-  }, [user, examId, toast]);
+  }, [user, examId, toast, db]);
 
-  // Load Exam Data & Resume Session
   useEffect(() => {
     const fetchData = async () => {
       if (!examId || !user) return;
@@ -110,7 +106,6 @@ export default function UjianPage() {
           const examData = examDoc.data();
           setExam(examData);
           
-          // Fetch questions from subcollection
           const questionsRef = collection(db, "exams", examId as string, "questions");
           const qSnap = await getDocs(query(questionsRef, orderBy("createdAt", "asc")));
           const qList = qSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -118,7 +113,6 @@ export default function UjianPage() {
           
           setTimeLeft(examData.durationMinutes ? examData.durationMinutes * 60 : 3600);
 
-          // Check for existing session
           const sessionRef = doc(db, "users", user.uid, "examSessions", examId as string);
           const sessionSnap = await getDoc(sessionRef);
           
@@ -127,7 +121,6 @@ export default function UjianPage() {
             setCurrentIndex(sessionData.currentQuestionIndex || 0);
             lastSavedIndex.current = sessionData.currentQuestionIndex || 0;
             
-            // Load answers
             const answersRef = collection(db, "users", user.uid, "examSessions", examId as string, "examAnswers");
             const answersSnap = await getDocs(answersRef);
             const loadedAnswers: any = {};
@@ -140,7 +133,6 @@ export default function UjianPage() {
             });
             setAnswers(loadedAnswers);
           } else {
-            // Create new session
             const initialSession = {
               id: examId,
               studentId: user.uid,
@@ -164,9 +156,8 @@ export default function UjianPage() {
     };
 
     fetchData();
-  }, [examId, user]);
+  }, [examId, user, db]);
 
-  // Timer Countdown
   useEffect(() => {
     if (loading || isSubmitting) return;
     const timer = setInterval(() => {
@@ -182,7 +173,6 @@ export default function UjianPage() {
     return () => clearInterval(timer);
   }, [loading, isSubmitting]);
 
-  // Auto-save current question index
   const saveIndex = useCallback((qIdx: number) => {
     if (!user || !examId) return;
     const sessionRef = doc(db, "users", user.uid, "examSessions", examId as string);
@@ -191,7 +181,7 @@ export default function UjianPage() {
       updatedAt: new Date().toISOString() 
     });
     lastSavedIndex.current = qIdx;
-  }, [user, examId]);
+  }, [user, examId, db]);
 
   const handleSelectAnswer = (value: string) => {
     if (!user || !examId) return;
@@ -204,7 +194,6 @@ export default function UjianPage() {
     };
     setAnswers(newAnswers);
 
-    // Auto-save answer to Firestore
     const answerRef = doc(db, "users", user.uid, "examSessions", examId as string, "examAnswers", qId);
     const answerData = {
       id: qId,
@@ -281,7 +270,7 @@ export default function UjianPage() {
         examSessionId: examId,
         submissionTime: new Date().toISOString(),
         totalScore: Math.round((correct / questions.length) * 100),
-        weightedScore: correct, // IRT logic could be more complex here
+        weightedScore: correct,
         correctAnswerCount: correct,
         incorrectAnswerCount: questions.length - correct,
         unansweredCount: questions.length - Object.keys(answers).length,
@@ -364,7 +353,6 @@ export default function UjianPage() {
           )}
 
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-            {/* Left Panel: Navigation */}
             <div className="lg:col-span-1 space-y-6">
               <Card className="shadow-lg border-t-4 border-primary">
                 <CardHeader className="pb-3 bg-muted/20">
@@ -420,7 +408,6 @@ export default function UjianPage() {
               </Card>
             </div>
 
-            {/* Right Panel: Question Content */}
             <div className="lg:col-span-3">
               <Card className="border-none shadow-2xl overflow-hidden min-h-[600px] flex flex-col bg-white">
                 <CardHeader className="bg-muted/5 border-b p-8">

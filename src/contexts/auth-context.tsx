@@ -2,9 +2,9 @@
 "use client";
 
 import React, { createContext, useContext, useEffect, useState } from "react";
-import { onAuthStateChanged, User } from "firebase/auth";
+import { User, onAuthStateChanged } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
-import { auth, db } from "@/lib/firebase-config";
+import { useAuth, useFirestore } from "@/firebase";
 
 interface AuthContextType {
   user: User | null;
@@ -22,17 +22,22 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [role, setRole] = useState<"admin" | "student" | null>(null);
   const [loading, setLoading] = useState(true);
+  const auth = useAuth();
+  const db = useFirestore();
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      setUser(user);
-      if (user) {
-        // Check userProfiles collection (matches backend.json)
-        const userDoc = await getDoc(doc(db, "userProfiles", user.uid));
-        if (userDoc.exists()) {
-          setRole(userDoc.data().role as "admin" | "student");
-        } else {
-          // If profile doesn't exist yet (e.g., during Google redirect), default to student
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      setUser(firebaseUser);
+      if (firebaseUser) {
+        try {
+          const userDoc = await getDoc(doc(db, "userProfiles", firebaseUser.uid));
+          if (userDoc.exists()) {
+            setRole(userDoc.data().role as "admin" | "student");
+          } else {
+            setRole("student");
+          }
+        } catch (error) {
+          console.error("Error fetching role:", error);
           setRole("student");
         }
       } else {
@@ -42,7 +47,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [auth, db]);
 
   return (
     <AuthContext.Provider value={{ user, role, loading }}>
@@ -51,4 +56,4 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   );
 };
 
-export const useAuth = () => useContext(AuthContext);
+export const useAppAuth = () => useContext(AuthContext);

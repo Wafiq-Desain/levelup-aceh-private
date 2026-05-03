@@ -2,19 +2,21 @@
 "use client";
 
 import { ProtectedRoute } from "@/components/auth/Protected-route";
-import { useAuth } from "@/contexts/auth-context";
+import { useAppAuth } from "@/contexts/auth-context";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
 import { useRouter } from "next/navigation";
 import { BookOpen, LogOut, Settings, Award, User, ListChecks } from "lucide-react";
-import { auth, db } from "@/lib/firebase-config";
+import { useAuth, useFirestore } from "@/firebase";
 import { signOut } from "firebase/auth";
 import { useEffect, useState } from "react";
-import { collection, query, getDocs, where } from "firebase/firestore";
+import { collection, query, getDocs } from "firebase/firestore";
 
 export default function DashboardPage() {
-  const { user, role } = useAuth();
+  const { user, role } = useAppAuth();
   const router = useRouter();
+  const auth = useAuth();
+  const db = useFirestore();
   const [exams, setExams] = useState<any[]>([]);
 
   useEffect(() => {
@@ -24,7 +26,7 @@ export default function DashboardPage() {
       setExams(querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     };
     fetchExams();
-  }, []);
+  }, [db]);
 
   const handleSignOut = async () => {
     await signOut(auth);

@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useAuth } from "@/contexts/auth-context";
+import { useAppAuth } from "@/contexts/auth-context";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 
@@ -12,7 +12,7 @@ export const ProtectedRoute = ({
   children: React.ReactNode;
   requiredRole?: "admin" | "student";
 }) => {
-  const { user, role, loading } = useAuth();
+  const { user, role, loading } = useAppAuth();
   const router = useRouter();
 
   useEffect(() => {
