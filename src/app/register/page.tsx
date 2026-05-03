@@ -2,8 +2,9 @@
 "use client";
 
 import { useState } from "react";
-import { signInWithEmailAndPassword } from "firebase/auth";
-import { auth } from "@/lib/firebase-config";
+import { createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
+import { doc, setDoc } from "firebase/firestore";
+import { auth, db } from "@/lib/firebase-config";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,9 +15,11 @@ import Image from "next/image";
 import { PlaceHolderImages } from "@/lib/placeholder-images";
 import Link from "next/link";
 
-export default function LoginPage() {
+export default function RegisterPage() {
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const router = useRouter();
   const { toast } = useToast();
@@ -24,17 +27,51 @@ export default function LoginPage() {
   const logo = PlaceHolderImages.find(img => img.id === 'logo');
   const bg = PlaceHolderImages.find(img => img.id === 'login-bg');
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
-    try {
-      await signInWithEmailAndPassword(auth, email, password);
-      router.push("/dashboard");
-    } catch (error: any) {
+    
+    if (password !== confirmPassword) {
       toast({
         variant: "destructive",
-        title: "Login Gagal",
-        description: "Email atau password salah. Silakan coba lagi.",
+        title: "Password Tidak Cocok",
+        description: "Konfirmasi password harus sama dengan password.",
+      });
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      const user = userCredential.user;
+
+      // Update auth profile
+      await updateProfile(user, { displayName: name });
+
+      // Create UserProfile in Firestore
+      await setDoc(doc(db, "userProfiles", user.uid), {
+        id: user.uid,
+        email: email,
+        displayName: name,
+        role: "student",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      });
+
+      // Also ensure the auth context picks up the student role by default if not redirected yet
+      // (The AuthProvider handles this logic, but setting the doc is primary)
+      
+      toast({
+        title: "Pendaftaran Berhasil",
+        description: "Selamat datang di Level Up Aceh Private!",
+      });
+      
+      router.push("/dashboard");
+    } catch (error: any) {
+      console.error(error);
+      toast({
+        variant: "destructive",
+        title: "Pendaftaran Gagal",
+        description: error.message || "Terjadi kesalahan saat mendaftar.",
       });
     } finally {
       setLoading(false);
@@ -69,12 +106,23 @@ export default function LoginPage() {
             )}
           </div>
           <div>
-            <CardTitle className="text-3xl font-bold font-headline text-primary">Level Up Aceh Private</CardTitle>
-            <CardDescription className="text-sm">Silakan login untuk mengakses ujian Anda</CardDescription>
+            <CardTitle className="text-3xl font-bold font-headline text-primary">Daftar Akun Baru</CardTitle>
+            <CardDescription className="text-sm">Bergabunglah untuk memulai persiapan ujian Anda</CardDescription>
           </div>
         </CardHeader>
         <CardContent className="pb-10">
-          <form onSubmit={handleLogin} className="space-y-6">
+          <form onSubmit={handleRegister} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="name">Nama Lengkap</Label>
+              <Input
+                id="name"
+                type="text"
+                placeholder="Nama Lengkap"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required
+              />
+            </div>
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <Input
@@ -84,7 +132,6 @@ export default function LoginPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                className="h-11"
               />
             </div>
             <div className="space-y-2">
@@ -92,26 +139,37 @@ export default function LoginPage() {
               <Input
                 id="password"
                 type="password"
-                placeholder="••••••••"
+                placeholder="Minimal 6 karakter"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                className="h-11"
+                minLength={6}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="confirmPassword">Konfirmasi Password</Label>
+              <Input
+                id="confirmPassword"
+                type="password"
+                placeholder="Ulangi password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                required
               />
             </div>
             <Button 
               type="submit" 
-              className="w-full h-11 text-lg font-semibold bg-primary hover:bg-primary/90 text-white transition-all shadow-md active:scale-[0.98]"
+              className="w-full h-11 text-lg font-semibold bg-primary hover:bg-primary/90 text-white transition-all shadow-md active:scale-[0.98] mt-4"
               disabled={loading}
             >
-              {loading ? "Memproses..." : "Masuk Sekarang"}
+              {loading ? "Mendaftarkan..." : "Daftar Sekarang"}
             </Button>
           </form>
           
           <div className="mt-6 text-center text-sm">
-            <span className="text-muted-foreground">Belum punya akun? </span>
-            <Link href="/register" className="text-primary font-bold hover:underline">
-              Daftar Sekarang
+            <span className="text-muted-foreground">Sudah punya akun? </span>
+            <Link href="/login" className="text-primary font-bold hover:underline">
+              Masuk di sini
             </Link>
           </div>
           
