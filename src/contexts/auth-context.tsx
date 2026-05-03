@@ -27,11 +27,13 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       setUser(user);
       if (user) {
-        const userDoc = await getDoc(doc(db, "users", user.uid));
+        // Check userProfiles collection (matches backend.json)
+        const userDoc = await getDoc(doc(db, "userProfiles", user.uid));
         if (userDoc.exists()) {
-          setRole(userDoc.data().role);
+          setRole(userDoc.data().role as "admin" | "student");
         } else {
-          setRole("student"); // Default
+          // If profile doesn't exist yet (e.g., during Google redirect), default to student
+          setRole("student");
         }
       } else {
         setRole(null);
