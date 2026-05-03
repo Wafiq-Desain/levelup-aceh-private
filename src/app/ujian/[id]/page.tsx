@@ -1,7 +1,6 @@
+'use client';
 
-"use client";
-
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ProtectedRoute } from "@/components/auth/Protected-route";
 import { useAuth } from "@/contexts/auth-context";
@@ -11,10 +10,7 @@ import {
   getDoc, 
   setDoc, 
   collection, 
-  onSnapshot, 
-  query, 
   getDocs,
-  serverTimestamp,
   addDoc
 } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
@@ -35,6 +31,8 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { errorEmitter } from '@/firebase/error-emitter';
+import { FirestorePermissionError } from '@/firebase/errors';
 
 export default function UjianPage() {
   const { id: examId } = useParams();
@@ -73,15 +71,23 @@ export default function UjianPage() {
 
   // SECURITY: Detect tab switching
   useEffect(() => {
-    const handleVisibilityChange = async () => {
+    const handleVisibilityChange = () => {
       if (document.hidden) {
         setIsBlurred(true);
         if (user && examId) {
           const warningRef = collection(db, "users", user.uid, "examSessions", examId as string, "antiCheatWarnings");
-          await addDoc(warningRef, {
+          const warningData = {
             timestamp: new Date().toISOString(),
             reason: "tab_switch",
             createdAt: new Date().toISOString()
+          };
+          
+          addDoc(warningRef, warningData).catch(err => {
+            errorEmitter.emit('permission-error', new FirestorePermissionError({
+              path: warningRef.path,
+              operation: 'create',
+              requestResourceData: warningData
+            }));
           });
           
           toast({
@@ -109,10 +115,8 @@ export default function UjianPage() {
           setExam(examData);
           setQuestions(examData.questions || []);
           
-          // Use duration from exam if available, else default
           setTimeLeft(examData.durationMinutes ? examData.durationMinutes * 60 : 3600);
 
-          // Check for existing session and answers
           const sessionRef = doc(db, "users", user.uid, "examSessions", examId as string);
           const sessionSnap = await getDoc(sessionRef);
           
@@ -120,7 +124,6 @@ export default function UjianPage() {
             const sessionData = sessionSnap.data();
             setCurrentIndex(sessionData.currentQuestionIndex || 0);
             
-            // Fetch saved answers
             const answersRef = collection(db, "users", user.uid, "examSessions", examId as string, "examAnswers");
             const answersSnap = await getDocs(answersRef);
             const loadedAnswers: any = {};
@@ -133,8 +136,7 @@ export default function UjianPage() {
             });
             setAnswers(loadedAnswers);
           } else {
-            // Initialize new session
-            await setDoc(sessionRef, {
+            const initialSession = {
               id: examId,
               studentId: user.uid,
               examId: examId,
@@ -145,6 +147,13 @@ export default function UjianPage() {
               isCompleted: false,
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString()
+            };
+            setDoc(sessionRef, initialSession).catch(err => {
+              errorEmitter.emit('permission-error', new FirestorePermissionError({
+                path: sessionRef.path,
+                operation: 'create',
+                requestResourceData: initialSession
+              }));
             });
           }
         }
@@ -174,16 +183,23 @@ export default function UjianPage() {
     return () => clearInterval(timer);
   }, [loading, isSubmitting]);
 
-  const saveProgress = useCallback(async (qIdx: number) => {
+  const saveProgress = useCallback((qIdx: number) => {
     if (!user || !examId) return;
     const sessionRef = doc(db, "users", user.uid, "examSessions", examId as string);
-    await setDoc(sessionRef, { 
+    const updateData = { 
       currentQuestionIndex: qIdx,
       updatedAt: new Date().toISOString() 
-    }, { merge: true });
+    };
+    setDoc(sessionRef, updateData, { merge: true }).catch(err => {
+       errorEmitter.emit('permission-error', new FirestorePermissionError({
+        path: sessionRef.path,
+        operation: 'update',
+        requestResourceData: updateData
+      }));
+    });
   }, [user, examId]);
 
-  const handleSelectAnswer = async (value: string) => {
+  const handleSelectAnswer = (value: string) => {
     const q = questions[currentIndex];
     const qId = q.id || `q_${currentIndex}`;
     const newAnswers = { 
@@ -192,9 +208,8 @@ export default function UjianPage() {
     };
     setAnswers(newAnswers);
 
-    // Save answer to subcollection
     const answerRef = doc(db, "users", user.uid, "examSessions", examId as string, "examAnswers", qId);
-    await setDoc(answerRef, {
+    const answerData = {
       id: qId,
       examSessionId: examId,
       questionId: qId,
@@ -203,10 +218,17 @@ export default function UjianPage() {
       answerTime: new Date().toISOString(),
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
-    }, { merge: true });
+    };
+    setDoc(answerRef, answerData, { merge: true }).catch(err => {
+       errorEmitter.emit('permission-error', new FirestorePermissionError({
+        path: answerRef.path,
+        operation: 'write',
+        requestResourceData: answerData
+      }));
+    });
   };
 
-  const handleToggleFlag = async () => {
+  const handleToggleFlag = () => {
     const q = questions[currentIndex];
     const qId = q.id || `q_${currentIndex}`;
     const newFlag = !answers[qId]?.isFlagged;
@@ -218,7 +240,13 @@ export default function UjianPage() {
     setAnswers(newAnswers);
 
     const answerRef = doc(db, "users", user.uid, "examSessions", examId as string, "examAnswers", qId);
-    await setDoc(answerRef, { isFlagged: newFlag, updatedAt: new Date().toISOString() }, { merge: true });
+    setDoc(answerRef, { isFlagged: newFlag, updatedAt: new Date().toISOString() }, { merge: true }).catch(err => {
+      errorEmitter.emit('permission-error', new FirestorePermissionError({
+        path: answerRef.path,
+        operation: 'update',
+        requestResourceData: { isFlagged: newFlag }
+      }));
+    });
   };
 
   const handleNext = () => {
@@ -248,7 +276,6 @@ export default function UjianPage() {
     setIsSubmitting(true);
     
     try {
-      // Calculate basic score
       let correct = 0;
       questions.forEach((q, idx) => {
         const qId = q.id || `q_${idx}`;
@@ -256,14 +283,14 @@ export default function UjianPage() {
       });
 
       const resultRef = doc(db, "users", user.uid, "results", examId as string);
-      await setDoc(resultRef, {
+      const resultData = {
         id: examId,
         studentId: user.uid,
         examId: examId,
         examSessionId: examId,
         submissionTime: new Date().toISOString(),
         totalScore: Math.round((correct / questions.length) * 100),
-        weightedScore: correct, // IRT placeholder
+        weightedScore: correct,
         correctAnswerCount: correct,
         incorrectAnswerCount: questions.length - correct,
         unansweredCount: questions.length - Object.keys(answers).length,
@@ -271,7 +298,9 @@ export default function UjianPage() {
         antiCheatWarningCount: 0,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
-      });
+      };
+
+      await setDoc(resultRef, resultData);
 
       toast({
         title: "Ujian Selesai!",
@@ -298,46 +327,46 @@ export default function UjianPage() {
     <ProtectedRoute>
       <div className={cn("min-h-screen bg-muted/30 transition-all duration-500", isBlurred && "blur-2xl grayscale pointer-events-none")}>
         <header className="sticky top-0 z-50 bg-white border-b shadow-sm">
-          <div className="container mx-auto px-4 h-16 flex items-center justify-between">
+          <div className="container mx-auto px-4 h-20 flex items-center justify-between">
             <div className="flex flex-col">
-              <h2 className="text-lg font-bold text-primary truncate max-w-[200px] md:max-w-md">
+              <h2 className="text-xl font-bold text-primary truncate max-w-[200px] md:max-w-md">
                 {exam?.title}
               </h2>
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <UserIcon className="h-3 w-3" />
-                <span>{user?.email}</span>
+              <div className="flex items-center gap-2 text-sm text-muted-foreground mt-1">
+                <UserIcon className="h-4 w-4" />
+                <span className="font-semibold">{user?.displayName || user?.email}</span>
               </div>
             </div>
             
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-6">
               <div className={cn(
-                "flex items-center gap-2 px-4 py-2 rounded-full font-mono font-bold transition-colors",
+                "flex items-center gap-2 px-6 py-3 rounded-full font-mono text-xl font-bold transition-colors shadow-inner",
                 timeLeft < 300 ? "bg-destructive/10 text-destructive animate-pulse" : "bg-muted text-foreground"
               )}>
-                <Clock className="h-4 w-4" />
+                <Clock className="h-6 w-6" />
                 {formatTime(timeLeft)}
               </div>
-              <Button variant="destructive" size="sm" onClick={handleSubmit} disabled={isSubmitting}>
-                Selesai
+              <Button variant="destructive" size="lg" onClick={handleSubmit} disabled={isSubmitting} className="font-bold px-8">
+                SELESAI
               </Button>
             </div>
           </div>
-          <Progress value={progressPercent} className="h-1 rounded-none bg-muted" />
+          <Progress value={progressPercent} className="h-1.5 rounded-none bg-muted" />
         </header>
 
         <main className="container mx-auto px-4 py-8">
           {isBlurred && (
             <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm pointer-events-auto">
-              <Card className="max-w-sm text-center p-8 space-y-6 shadow-2xl border-t-4 border-destructive">
+              <Card className="max-w-sm text-center p-8 space-y-6 shadow-2xl border-t-8 border-destructive">
                 <AlertCircle className="h-16 w-16 text-destructive mx-auto" />
                 <div className="space-y-2">
-                  <CardTitle className="text-2xl">Aktivitas Terlarang</CardTitle>
-                  <p className="text-muted-foreground">
-                    Anda terdeteksi meninggalkan halaman ujian. Klik tombol di bawah untuk kembali. Kejadian ini dicatat sistem.
+                  <CardTitle className="text-2xl font-bold">PERINGATAN KERAS!</CardTitle>
+                  <p className="text-muted-foreground font-medium">
+                    Anda terdeteksi meninggalkan halaman ujian. Klik tombol di bawah untuk kembali. Kejadian ini dicatat secara otomatis oleh sistem kami.
                   </p>
                 </div>
-                <Button className="w-full bg-primary h-12 text-lg" onClick={() => setIsBlurred(false)}>
-                  Kembali ke Ujian
+                <Button className="w-full bg-primary h-14 text-xl font-bold" onClick={() => setIsBlurred(false)}>
+                  KEMBALI KE UJIAN
                 </Button>
               </Card>
             </div>
@@ -346,16 +375,16 @@ export default function UjianPage() {
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
             {/* Left Panel: Navigation */}
             <div className="lg:col-span-1 space-y-6">
-              <Card className="shadow-md">
-                <CardHeader className="pb-3">
+              <Card className="shadow-lg border-t-4 border-primary">
+                <CardHeader className="pb-3 bg-muted/20">
                   <CardTitle className="text-sm font-bold flex items-center gap-2">
                     <BookOpen className="h-4 w-4 text-primary" />
-                    Navigasi Soal
+                    NAVIGASI SOAL
                   </CardTitle>
-                  <CardDescription>Pilih nomor untuk melompat ke soal</CardDescription>
+                  <CardDescription>Pilih nomor untuk melihat soal</CardDescription>
                 </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-5 gap-2">
+                <CardContent className="pt-6">
+                  <div className="grid grid-cols-5 gap-3">
                     {questions.map((_, i) => {
                       const qId = questions[i].id || `q_${i}`;
                       const hasAnswer = !!answers[qId]?.choice;
@@ -370,20 +399,18 @@ export default function UjianPage() {
                             saveProgress(i);
                           }}
                           className={cn(
-                            "h-10 rounded-md text-sm font-bold transition-all border shadow-sm flex items-center justify-center relative",
-                            isActive 
-                              ? "bg-primary text-white scale-110 ring-2 ring-primary ring-offset-2 z-10" 
-                              : isFlagged
-                                ? "bg-secondary text-secondary-foreground border-secondary"
-                                : hasAnswer
-                                  ? "bg-primary/10 text-primary border-primary/20"
-                                  : "bg-white text-muted-foreground hover:bg-muted"
+                            "h-12 rounded-lg text-sm font-black transition-all border-2 shadow-sm flex items-center justify-center relative",
+                            isActive || isFlagged
+                              ? "bg-secondary text-secondary-foreground border-secondary scale-105 ring-2 ring-secondary ring-offset-2 z-10" 
+                              : hasAnswer
+                                ? "bg-primary/10 text-primary border-primary/30"
+                                : "bg-white text-muted-foreground border-muted hover:border-primary/50"
                           )}
                         >
                           {i + 1}
                           {isFlagged && (
-                            <div className="absolute -top-1 -right-1">
-                              <Flag className="h-3 w-3 fill-current text-primary" />
+                            <div className="absolute -top-2 -right-2 bg-primary rounded-full p-1 shadow-md">
+                              <Flag className="h-3 w-3 fill-white text-white" />
                             </div>
                           )}
                         </button>
@@ -391,13 +418,13 @@ export default function UjianPage() {
                     })}
                   </div>
                 </CardContent>
-                <CardFooter className="flex flex-col gap-2 pt-0">
-                  <div className="flex items-center gap-2 text-xs w-full">
-                    <div className="w-3 h-3 bg-secondary rounded border" />
-                    <span>Ragu-ragu / Ditandai</span>
+                <CardFooter className="flex flex-col gap-3 pt-0 text-xs font-semibold">
+                  <div className="flex items-center gap-2 w-full">
+                    <div className="w-4 h-4 bg-secondary rounded border shadow-sm" />
+                    <span>Aktif / Ragu-ragu</span>
                   </div>
-                  <div className="flex items-center gap-2 text-xs w-full">
-                    <div className="w-3 h-3 bg-primary/10 rounded border" />
+                  <div className="flex items-center gap-2 w-full">
+                    <div className="w-4 h-4 bg-primary/10 rounded border border-primary/30" />
                     <span>Sudah Terjawab</span>
                   </div>
                 </CardFooter>
@@ -406,37 +433,37 @@ export default function UjianPage() {
 
             {/* Right Panel: Question Content */}
             <div className="lg:col-span-3">
-              <Card className="border-none shadow-xl overflow-hidden min-h-[500px] flex flex-col">
-                <CardHeader className="bg-muted/10 border-b p-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <span className="text-sm font-bold text-primary px-3 py-1 bg-primary/5 rounded-full">
-                      SOAL NOMOR {currentIndex + 1}
+              <Card className="border-none shadow-2xl overflow-hidden min-h-[600px] flex flex-col bg-white">
+                <CardHeader className="bg-muted/5 border-b p-8">
+                  <div className="flex items-center justify-between mb-6">
+                    <span className="text-xs font-black tracking-widest text-primary px-4 py-1.5 bg-primary/10 rounded-full uppercase">
+                      Soal Nomor {currentIndex + 1}
                     </span>
                     <Button 
                       variant="outline" 
                       size="sm" 
                       onClick={handleToggleFlag}
                       className={cn(
-                        "gap-2 font-medium transition-colors",
+                        "gap-2 font-bold transition-all px-6 border-2",
                         answers[currentQuestion?.id || `q_${currentIndex}`]?.isFlagged 
                           ? "bg-secondary text-secondary-foreground border-secondary" 
-                          : "text-muted-foreground"
+                          : "text-muted-foreground hover:border-primary/50"
                       )}
                     >
                       <Flag className={cn("h-4 w-4", answers[currentQuestion?.id || `q_${currentIndex}`]?.isFlagged && "fill-current")} />
-                      {answers[currentQuestion?.id || `q_${currentIndex}`]?.isFlagged ? "Hapus Tanda" : "Ragu-ragu"}
+                      {answers[currentQuestion?.id || `q_${currentIndex}`]?.isFlagged ? "HAPUS TANDA" : "RAGU-RAGU"}
                     </Button>
                   </div>
-                  <div className="text-lg leading-relaxed text-foreground/90 font-medium">
+                  <div className="text-xl leading-relaxed text-foreground font-semibold">
                     <LatexRenderer content={currentQuestion?.questionText || ""} />
                   </div>
                 </CardHeader>
                 
-                <CardContent className="flex-1 p-8">
+                <CardContent className="flex-1 p-8 bg-muted/5">
                   <RadioGroup 
                     value={answers[currentQuestion?.id || `q_${currentIndex}`]?.choice || ""} 
                     onValueChange={handleSelectAnswer}
-                    className="grid grid-cols-1 gap-4"
+                    className="grid grid-cols-1 gap-5"
                   >
                     {currentQuestion?.options?.map((opt: string, i: number) => {
                       const optKey = String.fromCharCode(65 + i);
@@ -446,19 +473,19 @@ export default function UjianPage() {
                         <div 
                           key={i} 
                           className={cn(
-                            "flex items-center space-x-3 rounded-xl border-2 p-4 transition-all hover:border-primary/50 cursor-pointer",
-                            isSelected ? "border-primary bg-primary/5 ring-1 ring-primary/20" : "border-border"
+                            "flex items-center space-x-3 rounded-2xl border-2 p-6 transition-all hover:bg-white hover:shadow-md cursor-pointer",
+                            isSelected ? "border-primary bg-white ring-2 ring-primary/20 shadow-lg" : "border-border bg-white/50"
                           )}
                           onClick={() => handleSelectAnswer(optKey)}
                         >
                           <RadioGroupItem value={optKey} id={`opt-${i}`} className="sr-only" />
                           <Label 
                             htmlFor={`opt-${i}`} 
-                            className="flex-1 cursor-pointer flex items-center gap-5 text-base font-normal"
+                            className="flex-1 cursor-pointer flex items-center gap-6 text-lg font-medium"
                           >
                             <span className={cn(
-                              "w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold border-2 transition-colors",
-                              isSelected ? "bg-primary text-white border-primary" : "bg-muted text-muted-foreground border-transparent"
+                              "w-12 h-12 rounded-xl flex items-center justify-center text-lg font-black border-2 transition-all shadow-sm",
+                              isSelected ? "bg-primary text-white border-primary rotate-3" : "bg-muted/50 text-muted-foreground border-muted"
                             )}>
                               {optKey}
                             </span>
@@ -467,7 +494,7 @@ export default function UjianPage() {
                             </div>
                           </Label>
                           {isSelected && (
-                            <CheckCircle2 className="h-6 w-6 text-primary animate-in zoom-in-50" />
+                            <CheckCircle2 className="h-8 w-8 text-primary animate-in zoom-in-50" />
                           )}
                         </div>
                       );
@@ -475,24 +502,24 @@ export default function UjianPage() {
                   </RadioGroup>
                 </CardContent>
 
-                <CardFooter className="p-6 border-t bg-muted/5 flex justify-between items-center">
+                <CardFooter className="p-8 border-t bg-white flex justify-between items-center">
                   <Button 
                     variant="ghost" 
                     onClick={handlePrev} 
                     disabled={currentIndex === 0}
-                    className="gap-2 h-11"
+                    className="gap-2 h-14 text-lg font-bold px-8 hover:bg-muted"
                   >
-                    <ChevronLeft className="h-4 w-4" /> Sebelumnya
+                    <ChevronLeft className="h-5 w-5" /> SEBELUMNYA
                   </Button>
                   
                   <div className="flex gap-4">
                     {currentIndex < questions.length - 1 ? (
-                      <Button onClick={handleNext} className="bg-primary hover:bg-primary/90 gap-2 h-11 px-8 font-bold">
-                        Simpan & Lanjutkan <ChevronRight className="h-4 w-4" />
+                      <Button onClick={handleNext} className="bg-primary hover:bg-primary/90 gap-3 h-14 px-10 text-xl font-black shadow-xl transition-all active:scale-95">
+                        SIMPAN & LANJUTKAN <ChevronRight className="h-6 w-6" />
                       </Button>
                     ) : (
-                      <Button onClick={handleSubmit} disabled={isSubmitting} className="bg-primary hover:bg-primary/90 gap-2 h-11 px-8 font-bold shadow-lg">
-                        {isSubmitting ? "Mengirim..." : "Kirim Jawaban"} <CheckCircle2 className="h-4 w-4" />
+                      <Button onClick={handleSubmit} disabled={isSubmitting} className="bg-primary hover:bg-primary/90 gap-3 h-14 px-10 text-xl font-black shadow-xl transition-all active:scale-95">
+                        {isSubmitting ? "MENGIRIM..." : "KIRIM JAWABAN"} <CheckCircle2 className="h-6 w-6" />
                       </Button>
                     )}
                   </div>
