@@ -71,7 +71,7 @@ export default function LoginPage() {
       toast({
         variant: "destructive",
         title: "Google Login Gagal",
-        description: error.message || "Gagal masuk dengan Google.",
+        description: error.message || "Gagal masuk dengan Google. Pastikan domain ini terdaftar di Firebase Console.",
       });
     } finally {
       setLoading(false);
