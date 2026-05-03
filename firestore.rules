@@ -1,0 +1,173 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    /**
+     * CORE PHILOSOPHY
+     * This ruleset enforces a strict user-ownership model combined with existence-based global administrative roles. 
+     * Security is achieved through path-based isolation and structural segregation.
+     *
+     * DATA STRUCTURE
+     * 1. Public/Shared Data: Collections like /exams and its /questions are accessible to all authenticated users.
+     * 2. Private User Data: All student-specific data (sessions, answers, warnings, results) is nested under 
+     *    the path /users/{userId}/ to ensure clear ownership and efficient authorization checks.
+     * 3. Administrative Roles: Admin privileges are determined by the presence of a document in the 
+     *    top-level /adminUsers collection, allowing for fast, atomic authorization.
+     *
+     * KEY SECURITY DECISIONS
+     * - Authorization Independence: Rules avoid costly 'get()' calls by deriving ownership from the path 
+     *   variable {userId} and using a sparse collection for global admin checks.
+     * - Relational Integrity: On document creation within user paths, rules enforce that internal 
+     *   ID fields match the path wildcards.
+     * - Prototyping Flexibility: Rules focus strictly on 'who' can access data, rather than 'what' 
+     *   the data looks like, facilitating rapid UI/schema iteration.
+     */
+
+    // --- Helper Functions ---
+
+    /** @description Checks if the request is from an authenticated user. */
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    /** @description Checks if the user's UID exists in the adminUsers collection. */
+    function isAdmin() {
+      return isSignedIn() && exists(/databases/$(database)/documents/adminUsers/$(request.auth.uid));
+    }
+
+    /** @description Checks if the authenticated user's UID matches the provided userId. */
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    /** @description Combines ownership check with document existence for updates and deletes. */
+    function isExistingOwner(userId) {
+      return isOwner(userId) && resource != null;
+    }
+
+    // --- Collection Rules ---
+
+    /**
+     * @description Rules for the admin lookup collection.
+     * @path /adminUsers/{userId}
+     * @allow (get) Any signed-in user can check for admin status (used via helper).
+     * @deny (write) No client-side writes are allowed to this critical role collection.
+     * @principle Global Roles - Existence over Content.
+     */
+    match /adminUsers/{userId} {
+      allow get: if isSignedIn();
+      allow list: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
+    /**
+     * @description Manages user profiles including roles and display names.
+     * @path /userProfiles/{userId}
+     * @allow (get, list) Admins can view all profiles; Users can view their own.
+     * @allow (update) Users can update their own profile data.
+     * @deny (create) Profiles are typically created via Auth triggers, but path-consistency is enforced if allowed.
+     * @principle Ownership-based access and Administrative oversight.
+     */
+    match /userProfiles/{userId} {
+      allow get: if isOwner(userId) || isAdmin();
+      allow list: if isAdmin();
+      allow update: if isExistingOwner(userId);
+      allow create: if isOwner(userId) && request.resource.data.id == userId;
+      allow delete: if false;
+    }
+
+    /**
+     * @description Access to exam metadata and tryout titles.
+     * @path /exams/{examId}
+     * @allow (get, list) All authenticated students can browse exams.
+     * @allow (create, update, delete) Only admins can manage exam definitions.
+     * @principle Public Read with Admin-Only Writes.
+     */
+    match /exams/{examId} {
+      allow get, list: if isSignedIn();
+      allow create, update, delete: if isAdmin();
+
+      /**
+       * @description Access to questions belonging to a specific exam.
+       * @path /exams/{examId}/questions/{questionId}
+       * @allow (get, list) Students can read questions for the exam they are taking.
+       * @allow (create, update, delete) Only admins can manage question content.
+       * @principle Inherited public readability for authorized users.
+       */
+      match /questions/{questionId} {
+        allow get, list: if isSignedIn();
+        allow create, update, delete: if isAdmin();
+      }
+    }
+
+    /**
+     * @description Root of the private user data tree.
+     * @path /users/{userId}
+     */
+    match /users/{userId} {
+      
+      /**
+       * @description Tracks a student's active exam sessions and anti-cheat state.
+       * @path /users/{userId}/examSessions/{examSessionId}
+       * @allow (get, list, update) Students manage their own sessions; Admins can audit.
+       * @allow (create) Students create their session, enforcing path and ID consistency.
+       * @principle Path-based ownership and Relational Integrity.
+       */
+      match /examSessions/{examSessionId} {
+        allow get, list: if isOwner(userId) || isAdmin();
+        allow create: if isOwner(userId) && request.resource.data.studentId == userId;
+        allow update: if isExistingOwner(userId) && request.resource.data.studentId == resource.data.studentId;
+        allow delete: if isAdmin();
+
+        /**
+         * @description Stores individual question responses for auto-save functionality.
+         * @path /users/{userId}/examSessions/{examSessionId}/examAnswers/{examAnswerId}
+         * @allow (create, get, list, update) Students manage their own answers.
+         * @principle Resource ownership via hierarchical nesting.
+         */
+        match /examAnswers/{examAnswerId} {
+          allow get, list: if isOwner(userId) || isAdmin();
+          allow create: if isOwner(userId);
+          allow update: if isExistingOwner(userId);
+          allow delete: if false;
+        }
+
+        /**
+         * @description Records anti-cheat violations (tab switches, right clicks).
+         * @path /users/{userId}/examSessions/{examSessionId}/antiCheatWarnings/{warningId}
+         * @allow (create) Client-side script records violations to the student's own path.
+         * @allow (get, list) Admins and the student can review the logged warnings.
+         * @principle Append-only student logging with Admin oversight.
+         */
+        match /antiCheatWarnings/{warningId} {
+          allow get, list: if isOwner(userId) || isAdmin();
+          allow create: if isOwner(userId);
+          allow update, delete: if false;
+        }
+      }
+
+      /**
+       * @description Stores final, immutable exam results and performance reports.
+       * @path /users/{userId}/results/{resultId}
+       * @allow (get, list) Students view their results; Admins view all results for reporting.
+       * @deny (write) Results are finalized by the system or Admin; no client-side modification.
+       * @principle Private Read-Only student data.
+       */
+      match /results/{resultId} {
+        allow get, list: if isOwner(userId) || isAdmin();
+        allow create, update, delete: if isAdmin();
+
+        /**
+         * @description Breakdown of correctness for each question in a result.
+         * @path /users/{userId}/results/{resultId}/resultAnswers/{resultAnswerId}
+         * @allow (get, list) Access follows parent result visibility.
+         * @principle Hierarchical read-only access.
+         */
+        match /resultAnswers/{resultAnswerId} {
+          allow get, list: if isOwner(userId) || isAdmin();
+          allow create, update, delete: if isAdmin();
+        }
+      }
+    }
+  }
+}

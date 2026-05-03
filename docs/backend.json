@@ -1,0 +1,640 @@
+{
+  "entities": {
+    "UserProfile": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "UserProfile",
+      "type": "object",
+      "description": "Stores profile information for users of the Level Up Aceh Private application, including their role and display name. Used to differentiate between students and administrators and personalize the user experience.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the UserProfile entity."
+        },
+        "email": {
+          "type": "string",
+          "description": "User's email address, used for communication and identification.",
+          "format": "email"
+        },
+        "displayName": {
+          "type": "string",
+          "description": "The name displayed for the user within the application."
+        },
+        "role": {
+          "type": "string",
+          "description": "The role of the user (e.g., 'student', 'admin'), determining their access privileges."
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp indicating when the user profile was created.",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Timestamp indicating when the user profile was last updated.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "email",
+        "displayName",
+        "role",
+        "createdAt"
+      ]
+    },
+    "Exam": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Exam",
+      "type": "object",
+      "description": "Represents a specific tryout or test, containing a collection of questions and overall exam details.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Exam entity."
+        },
+        "title": {
+          "type": "string",
+          "description": "The title of the exam or tryout (e.g., 'Tryout Matematika Paket A')."
+        },
+        "description": {
+          "type": "string",
+          "description": "A brief description or overview of the exam content and purpose."
+        },
+        "durationMinutes": {
+          "type": "number",
+          "description": "The maximum duration allowed for completing the exam, in minutes."
+        },
+        "questionIds": {
+          "type": "array",
+          "description": "References to the Question entities that are part of this exam. (Relationship: Exam 1:N Question)",
+          "items": {
+            "type": "string"
+          }
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp indicating when the exam was created.",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Timestamp indicating when the exam was last updated.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "durationMinutes",
+        "questionIds",
+        "createdAt"
+      ]
+    },
+    "Question": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Question",
+      "type": "object",
+      "description": "Represents a single question item within an exam, including its text, multiple-choice options, correct answer, and difficulty level for dynamic scoring.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Question entity."
+        },
+        "examId": {
+          "type": "string",
+          "description": "Reference to the Exam entity this question belongs to. (Relationship: Exam 1:N Question)"
+        },
+        "questionText": {
+          "type": "string",
+          "description": "The main text content of the question, which may include LaTeX mathematical expressions."
+        },
+        "options": {
+          "type": "array",
+          "description": "An array of strings representing the multiple-choice options for the question.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "correctAnswerIndex": {
+          "type": "number",
+          "description": "The zero-based index of the correct answer within the 'options' array."
+        },
+        "difficultyLevel": {
+          "type": "string",
+          "description": "The difficulty level of the question (e.g., 'easy', 'medium', 'hard'), used for Item Response Theory (IRT) based dynamic scoring."
+        },
+        "imageUrl": {
+          "type": "string",
+          "description": "Optional URL to an image asset associated with the question.",
+          "format": "uri"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp indicating when the question was created.",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Timestamp indicating when the question was last updated.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "examId",
+        "questionText",
+        "options",
+        "correctAnswerIndex",
+        "difficultyLevel",
+        "createdAt"
+      ]
+    },
+    "ExamSession": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "ExamSession",
+      "type": "object",
+      "description": "Captures the in-progress state of a student's attempt at an exam, facilitating auto-save functionality and recording anti-cheat warnings.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the ExamSession entity."
+        },
+        "studentId": {
+          "type": "string",
+          "description": "Reference to the UserProfile of the student currently taking the exam. (Relationship: UserProfile 1:N ExamSession)"
+        },
+        "examId": {
+          "type": "string",
+          "description": "Reference to the Exam entity being attempted. (Relationship: Exam 1:N ExamSession)"
+        },
+        "startTime": {
+          "type": "string",
+          "description": "Timestamp when the student initiated the exam session.",
+          "format": "date-time"
+        },
+        "endTime": {
+          "type": "string",
+          "description": "Timestamp when the student completed or submitted the exam session. Null if the session is still ongoing.",
+          "format": "date-time"
+        },
+        "currentQuestionIndex": {
+          "type": "number",
+          "description": "The zero-based index of the last question the student was viewing or answering, allowing them to resume."
+        },
+        "examAnswerIds": {
+          "type": "array",
+          "description": "References to the ExamAnswer entities, storing the student's chosen answers for each question during the session. (Relationship: ExamSession 1:N ExamAnswer)",
+          "items": {
+            "type": "string"
+          }
+        },
+        "antiCheatWarningIds": {
+          "type": "array",
+          "description": "References to AntiCheatWarning entities, detailing detected anti-cheat events during the session. (Relationship: ExamSession 1:N AntiCheatWarning)",
+          "items": {
+            "type": "string"
+          }
+        },
+        "isCompleted": {
+          "type": "boolean",
+          "description": "A boolean flag indicating whether the exam session has been officially completed and submitted by the student."
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp indicating when the exam session record was created.",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Timestamp indicating when the exam session record was last updated.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "studentId",
+        "examId",
+        "startTime",
+        "currentQuestionIndex",
+        "examAnswerIds",
+        "antiCheatWarningIds",
+        "isCompleted",
+        "createdAt"
+      ]
+    },
+    "ExamAnswer": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "ExamAnswer",
+      "type": "object",
+      "description": "Stores a single student's answer to a specific question within an exam session, including whether it's flagged for review. This entity supports the auto-save functionality for in-progress exams.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the ExamAnswer entity."
+        },
+        "examSessionId": {
+          "type": "string",
+          "description": "Reference to the ExamSession this answer belongs to. (Relationship: ExamSession 1:N ExamAnswer)"
+        },
+        "questionId": {
+          "type": "string",
+          "description": "Reference to the Question being answered. (Relationship: Question 1:N ExamAnswer)"
+        },
+        "chosenAnswerIndex": {
+          "type": "number",
+          "description": "The zero-based index of the option chosen by the student for this question."
+        },
+        "isFlagged": {
+          "type": "boolean",
+          "description": "Indicates if the student marked this question for review ('ragu-ragu')."
+        },
+        "answerTime": {
+          "type": "string",
+          "description": "Timestamp when the student's answer was recorded or last updated.",
+          "format": "date-time"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp indicating when the exam answer record was created.",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Timestamp indicating when the exam answer record was last updated.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "examSessionId",
+        "questionId",
+        "chosenAnswerIndex",
+        "isFlagged",
+        "createdAt"
+      ]
+    },
+    "AntiCheatWarning": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "AntiCheatWarning",
+      "type": "object",
+      "description": "Records an instance of a detected anti-cheat violation during an exam session, used for monitoring and reporting academic integrity.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the AntiCheatWarning entity."
+        },
+        "examSessionId": {
+          "type": "string",
+          "description": "Reference to the ExamSession where the warning occurred. (Relationship: ExamSession 1:N AntiCheatWarning)"
+        },
+        "timestamp": {
+          "type": "string",
+          "description": "Timestamp when the anti-cheat event was detected.",
+          "format": "date-time"
+        },
+        "reason": {
+          "type": "string",
+          "description": "A description of the anti-cheat violation (e.g., 'tab_switch', 'right_click_attempt', 'text_selection')."
+        },
+        "details": {
+          "type": "string",
+          "description": "Optional additional details or context about the warning event."
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp indicating when the anti-cheat warning record was created.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "examSessionId",
+        "timestamp",
+        "reason",
+        "createdAt"
+      ]
+    },
+    "Result": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Result",
+      "type": "object",
+      "description": "Stores the final, computed outcome and performance data for a student's completed exam, used for generating student reports and admin analytics.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Result entity."
+        },
+        "studentId": {
+          "type": "string",
+          "description": "Reference to the UserProfile of the student who completed the exam. (Relationship: UserProfile 1:N Result)"
+        },
+        "examId": {
+          "type": "string",
+          "description": "Reference to the Exam entity that was taken. (Relationship: Exam 1:N Result)"
+        },
+        "examSessionId": {
+          "type": "string",
+          "description": "Reference to the ExamSession entity from which this result was generated. (Relationship: ExamSession 1:1 Result)"
+        },
+        "submissionTime": {
+          "type": "string",
+          "description": "Timestamp when the exam result was officially submitted and finalized.",
+          "format": "date-time"
+        },
+        "totalScore": {
+          "type": "number",
+          "description": "The raw total score achieved by the student in the exam."
+        },
+        "weightedScore": {
+          "type": "number",
+          "description": "The final score adjusted using dynamic weighting principles (e.g., IRT) based on question difficulty levels."
+        },
+        "correctAnswerCount": {
+          "type": "number",
+          "description": "The total number of questions the student answered correctly."
+        },
+        "incorrectAnswerCount": {
+          "type": "number",
+          "description": "The total number of questions the student answered incorrectly."
+        },
+        "unansweredCount": {
+          "type": "number",
+          "description": "The total number of questions the student did not answer."
+        },
+        "resultAnswerIds": {
+          "type": "array",
+          "description": "References to ResultAnswer entities, providing a snapshot of each question's outcome for this result. (Relationship: Result 1:N ResultAnswer)",
+          "items": {
+            "type": "string"
+          }
+        },
+        "antiCheatWarningCount": {
+          "type": "number",
+          "description": "The total number of anti-cheat warnings recorded during the corresponding exam session that led to this result."
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp indicating when the result record was created.",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Timestamp indicating when the result record was last updated.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "studentId",
+        "examId",
+        "examSessionId",
+        "submissionTime",
+        "totalScore",
+        "weightedScore",
+        "correctAnswerCount",
+        "incorrectAnswerCount",
+        "unansweredCount",
+        "resultAnswerIds",
+        "antiCheatWarningCount",
+        "createdAt"
+      ]
+    },
+    "ResultAnswer": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "ResultAnswer",
+      "type": "object",
+      "description": "Stores the specific outcome of a student's answer to a question within a completed exam result, indicating correctness. This entity is used for detailed reporting and analytics of student performance.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the ResultAnswer entity."
+        },
+        "resultId": {
+          "type": "string",
+          "description": "Reference to the Result entity this answer is part of. (Relationship: Result 1:N ResultAnswer)"
+        },
+        "questionId": {
+          "type": "string",
+          "description": "Reference to the Question that was answered. (Relationship: Question 1:N ResultAnswer)"
+        },
+        "chosenAnswerIndex": {
+          "type": "number",
+          "description": "The zero-based index of the option chosen by the student for this question."
+        },
+        "correctAnswerIndex": {
+          "type": "number",
+          "description": "The zero-based index of the correct option for the question, used for comparison."
+        },
+        "isCorrect": {
+          "type": "boolean",
+          "description": "Indicates whether the student's chosen answer was correct."
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp indicating when the result answer record was created.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "resultId",
+        "questionId",
+        "chosenAnswerIndex",
+        "correctAnswerIndex",
+        "isCorrect",
+        "createdAt"
+      ]
+    }
+  },
+  "auth": {
+    "providers": [
+      "password",
+      "anonymous"
+    ]
+  },
+  "firestore": {
+    "structure": [
+      {
+        "path": "/userProfiles/{userId}",
+        "definition": {
+          "entityName": "UserProfile",
+          "schema": {
+            "$ref": "#/backend/entities/UserProfile"
+          },
+          "description": "Stores user profile information including display name and informational role. Users can read and update their own profile. Admins can read all profiles. This collection's 'role' field is for display/application logic, not for direct authorization checks in security rules.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique identifier of the user (from request.auth.uid)."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/adminUsers/{userId}",
+        "definition": {
+          "entityName": "UserProfile",
+          "schema": {
+            "$ref": "#/backend/entities/UserProfile"
+          },
+          "description": "A sparse collection where the existence of a document at `{userId}` grants administrator privileges. This collection is crucial for Authorization Independence, allowing security rules to perform efficient and atomic 'exists()' checks for global admin roles, fulfilling DBAC and QAP principles without relying on 'get()' operations on other documents. Only the `userId` is significant; document content can be minimal.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique identifier of the user who has admin privileges (from request.auth.uid)."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/exams/{examId}",
+        "definition": {
+          "entityName": "Exam",
+          "schema": {
+            "$ref": "#/backend/entities/Exam"
+          },
+          "description": "Stores details about an exam or tryout. Students can read all exams to view available tryouts. Administrators have full create, read, update, and delete (CRUD) access.",
+          "params": [
+            {
+              "name": "examId",
+              "description": "The unique identifier for the exam."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/exams/{examId}/questions/{questionId}",
+        "definition": {
+          "entityName": "Question",
+          "schema": {
+            "$ref": "#/backend/entities/Question"
+          },
+          "description": "Stores individual question details for a specific exam. Students can read questions for any exam. Administrators have full CRUD access to questions. Includes 'difficultyLevel' for dynamic scoring. No denormalized authorization fields are required here as access is inherited from the parent exam's public readability for students.",
+          "params": [
+            {
+              "name": "examId",
+              "description": "The unique identifier of the parent exam."
+            },
+            {
+              "name": "questionId",
+              "description": "The unique identifier for the question."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/users/{userId}/examSessions/{examSessionId}",
+        "definition": {
+          "entityName": "ExamSession",
+          "schema": {
+            "$ref": "#/backend/entities/ExamSession"
+          },
+          "description": "Tracks a student's in-progress attempt at an exam. Students can create, read, and update their own exam sessions. 'studentId' is implicitly managed by the path, ensuring Authorization Independence. Includes 'examId' for context and 'currentQuestionIndex' for resuming.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique identifier of the student taking the exam (from request.auth.uid)."
+            },
+            {
+              "name": "examSessionId",
+              "description": "The unique identifier for the specific exam session."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/users/{userId}/examSessions/{examSessionId}/examAnswers/{examAnswerId}",
+        "definition": {
+          "entityName": "ExamAnswer",
+          "schema": {
+            "$ref": "#/backend/entities/ExamAnswer"
+          },
+          "description": "Stores a student's chosen answer for a specific question within their exam session. Students can create, read, and update their own exam answers. Ownership is derived from the parent path `{userId}`, ensuring Authorization Independence. Includes 'questionId' and 'isFlagged'.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique identifier of the student owning this answer."
+            },
+            {
+              "name": "examSessionId",
+              "description": "The unique identifier of the parent exam session."
+            },
+            {
+              "name": "examAnswerId",
+              "description": "The unique identifier for the exam answer."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/users/{userId}/examSessions/{examSessionId}/antiCheatWarnings/{warningId}",
+        "definition": {
+          "entityName": "AntiCheatWarning",
+          "schema": {
+            "$ref": "#/backend/entities/AntiCheatWarning"
+          },
+          "description": "Records instances of anti-cheat violations detected during an exam session. Students can create warnings within their own sessions. Admins can read these warnings. Ownership is derived from the parent path `{userId}`, ensuring Authorization Independence.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique identifier of the student associated with the warning."
+            },
+            {
+              "name": "examSessionId",
+              "description": "The unique identifier of the parent exam session where the warning occurred."
+            },
+            {
+              "name": "warningId",
+              "description": "The unique identifier for the anti-cheat warning."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/users/{userId}/results/{resultId}",
+        "definition": {
+          "entityName": "Result",
+          "schema": {
+            "$ref": "#/backend/entities/Result"
+          },
+          "description": "Stores the final computed outcome and performance data for a student's completed exam. Students can read their own results. Administrators can read all results. Ownership is derived from the path `{userId}`, ensuring Authorization Independence. Includes 'examId' and 'examSessionId' for context.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique identifier of the student whose result this is."
+            },
+            {
+              "name": "resultId",
+              "description": "The unique identifier for the exam result."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/users/{userId}/results/{resultId}/resultAnswers/{resultAnswerId}",
+        "definition": {
+          "entityName": "ResultAnswer",
+          "schema": {
+            "$ref": "#/backend/entities/ResultAnswer"
+          },
+          "description": "Stores the specific outcome (correctness) of a student's answer to a question within a completed exam result. Students can read their own result answers. Administrators can read all result answers. Ownership is derived from the parent path `{userId}`, ensuring Authorization Independence. Includes 'questionId'.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique identifier of the student owning this result answer."
+            },
+            {
+              "name": "resultId",
+              "description": "The unique identifier of the parent result."
+            },
+            {
+              "name": "resultAnswerId",
+              "description": "The unique identifier for the result answer."
+            }
+          ]
+        }
+      }
+    ],
+    "reasoning": "The recommended Firestore data structure prioritizes security, scalability, and debuggability following the CORE DESIGN PRINCIPLES and DESIGN STRATEGY MANDATES. It leverages hierarchical path structures for user-specific data, dedicated collections for global roles, and subcollections for related entities, ensuring that authorization rules are simple and atomic.\n\n**Authorization Independence (CRITICAL):**\n1.  **Dedicated Admin Role Collection (`/adminUsers/{userId}`):** Instead of relying on a `get()` call to a user's `UserProfile` document to check their `role` field (which would break atomic operations and complicate rules), a separate sparse collection `/adminUsers/{userId}` is introduced. The *existence* of a document at `/adminUsers/$(request.auth.uid)` directly grants admin privileges. This allows security rules to perform an atomic `exists()` check, completely eliminating hierarchical authorization dependencies for global admin access. This is a direct application of Strategy A (denormalization of authorization context for global roles) and Strategy C (Global Roles - Existence over Content).\n2.  **Path-Based Ownership (`/users/{userId}/...`):** For user-owned data like `ExamSession`, `ExamAnswer`, `AntiCheatWarning`, `Result`, and `ResultAnswer`, the `userId` is embedded directly into the root of the path (`/users/{userId}/`). This ensures that authorization can be determined solely by comparing `request.auth.uid` with the `{userId}` wildcard in the path. This check is atomic and does not require fetching data from other documents, thereby achieving authorization independence for personal data. This aligns with Strategy C (Private Data & Hierarchical Paths).\n\n**QAPs (Rules are not Filters):**\n1.  **Publicly Readable Collections (`/exams` and `/exams/{examId}/questions`):** The `exams` collection is designed to be fully readable by all authenticated students. Similarly, its subcollection `questions` is also readable by students. This allows students to list all available exams and their respective questions without requiring any filtering by security rules based on content, directly supporting `list` operations (QAPs).\n2.  **User-Scoped List Operations (`/users/{userId}/examSessions`, `/users/{userId}/results`):** By structuring user-specific data under `/users/{userId}/`, students can perform `list` queries on their own data. For example, a student can request all documents from `/users/$(request.auth.uid)/examSessions`. The security rule `allow list: if request.auth.uid == userId;` perfectly aligns with QAPs, as it only allows listing *their own* data, with `userId` being a parameter in the path rather than a field to filter on in a query. This makes the `list` operation secure and efficient without relying on rules acting as filters.\n3.  **Admin List Access:** With the `adminUsers` collection, admins can be granted explicit `list` access to collections like all `/users/{userId}/results` (for report viewing) without violating QAPs. The admin check is independent of the data being listed and the rules do not implicitly filter data based on content for the admin.\n\n**Structural Segregation & Access Modeling:**\n*   Collections are segregated based on their security posture. For example, `exams` is globally readable by students, while `examSessions` is strictly user-private. This minimizes complexity in security rules.\n*   Consistent use of `/users/{userId}/` prefix for all student-specific, private data (sessions, answers, results) provides clear ownership and simplifies rule writing.\n*   All necessary foreign keys (e.g., `examId`, `questionId`) are included as fields within the documents (e.g., in `ExamSession`, `ExamAnswer`) to maintain relationships, but critically, these are for data integrity and query capability, not for authorization checks themselves."
+  }
+}
