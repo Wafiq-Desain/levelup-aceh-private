@@ -1,14 +1,16 @@
 
 "use client";
 
-import { ProtectedRoute } from "@/components/auth/Protected-route";
+import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { ChevronLeft, Download, Eye, Search, FileText, Calendar, TrendingUp, User as UserIcon } from "lucide-react";
+import { ChevronLeft, Download, Search, FileText, Calendar, TrendingUp, User as UserIcon } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useFirestore } from "@/firebase";
 import { collection, collectionGroup, getDocs, query, orderBy } from "firebase/firestore";
+import { errorEmitter } from "@/firebase/error-emitter";
+import { FirestorePermissionError } from "@/firebase/errors";
 import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -27,26 +29,35 @@ export default function AdminReportsPage() {
     const fetchData = async () => {
       setLoading(true);
       try {
-        // Ambil data profil pengguna untuk pemetaan nama
+        // Pemetaan Profil
         const usersSnap = await getDocs(collection(db, "userProfiles"));
         const uMap: Record<string, any> = {};
         usersSnap.forEach(doc => uMap[doc.id] = doc.data());
         setUsersMap(uMap);
 
-        // Ambil data ujian untuk pemetaan judul
+        // Pemetaan Ujian
         const examsSnap = await getDocs(collection(db, "exams"));
         const eMap: Record<string, any> = {};
         examsSnap.forEach(doc => eMap[doc.id] = doc.data());
         setExamsMap(eMap);
 
-        // Ambil semua hasil ujian dari seluruh pengguna menggunakan collectionGroup
+        // Kueri Laporan
         const resultsQuery = query(collectionGroup(db, "results"), orderBy("submissionTime", "desc"));
-        const resultsSnap = await getDocs(resultsQuery);
-        const resultsList = resultsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        setResults(resultsList);
+        getDocs(resultsQuery)
+          .then(resultsSnap => {
+            const resultsList = resultsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            setResults(resultsList);
+            setLoading(false);
+          })
+          .catch(async (err) => {
+            const permissionError = new FirestorePermissionError({
+              path: 'collectionGroup(results)',
+              operation: 'list'
+            });
+            errorEmitter.emit('permission-error', permissionError);
+            setLoading(false);
+          });
       } catch (err) {
-        console.error("Error fetching reports:", err);
-      } finally {
         setLoading(false);
       }
     };

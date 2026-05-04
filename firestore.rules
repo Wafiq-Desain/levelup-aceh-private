@@ -52,6 +52,14 @@ service cloud.firestore {
       }
     }
 
+    // Collection Group rules for Admin Reports
+    match /{path=**}/results/{resultId} {
+      allow list: if isAdmin();
+    }
+    match /{path=**}/resultAnswers/{answerId} {
+      allow list: if isAdmin();
+    }
+
     match /users/{userId} {
       
       match /examSessions/{examSessionId} {

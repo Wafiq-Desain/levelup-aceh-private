@@ -1,7 +1,7 @@
 
 "use client";
 
-import { ProtectedRoute } from "@/components/auth/Protected-route";
+import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -11,7 +11,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Plus, Trash, Save, ChevronLeft, LayoutList, FilePlus, Pencil, Image as ImageIcon, X } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useFirestore } from "@/firebase";
-import { collection, addDoc, getDocs, query, orderBy, doc, setDoc, deleteDoc } from "firebase/firestore";
+import { collection, getDocs, query, orderBy, doc } from "firebase/firestore";
+import { errorEmitter } from "@/firebase/error-emitter";
+import { FirestorePermissionError } from "@/firebase/errors";
+import { setDocumentNonBlocking, addDocumentNonBlocking } from "@/firebase/non-blocking-updates";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -40,16 +43,21 @@ export default function AdminExamsPage() {
 
   const fetchExams = async () => {
     setLoading(true);
-    try {
-      const q = query(collection(db, "exams"), orderBy("createdAt", "desc"));
-      const querySnapshot = await getDocs(q);
-      const list = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setExams(list);
-    } catch (err) {
-      console.error("Error fetching exams:", err);
-    } finally {
-      setLoading(false);
-    }
+    const q = query(collection(db, "exams"), orderBy("createdAt", "desc"));
+    getDocs(q)
+      .then(querySnapshot => {
+        const list = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setExams(list);
+        setLoading(false);
+      })
+      .catch(async (err) => {
+        const permissionError = new FirestorePermissionError({
+          path: 'exams',
+          operation: 'list'
+        });
+        errorEmitter.emit('permission-error', permissionError);
+        setLoading(false);
+      });
   };
 
   const handleEditExam = async (exam: any) => {
@@ -57,25 +65,27 @@ export default function AdminExamsPage() {
     setTitle(exam.title);
     setDuration(String(exam.durationMinutes));
     
-    // Fetch questions for this exam
-    try {
-      setLoading(true);
-      const qSnap = await getDocs(query(collection(db, "exams", exam.id, "questions"), orderBy("createdAt", "asc")));
-      const qList = qSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      
-      if (qList.length > 0) {
-        setQuestions(qList);
-      } else {
-        setQuestions([{ questionText: "", options: ["", "", "", "", ""], correctAnswerIndex: 0, difficultyLevel: "medium", imageUrl: "" }]);
-      }
-      
-      setActiveTab("new");
-    } catch (err) {
-      console.error("Error fetching questions:", err);
-      toast({ variant: "destructive", title: "Error", description: "Gagal memuat soal ujian." });
-    } finally {
-      setLoading(false);
-    }
+    setLoading(true);
+    const q = query(collection(db, "exams", exam.id, "questions"), orderBy("createdAt", "asc"));
+    getDocs(q)
+      .then(qSnap => {
+        const qList = qSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        if (qList.length > 0) {
+          setQuestions(qList);
+        } else {
+          setQuestions([{ questionText: "", options: ["", "", "", "", ""], correctAnswerIndex: 0, difficultyLevel: "medium", imageUrl: "" }]);
+        }
+        setLoading(false);
+        setActiveTab("new");
+      })
+      .catch(async (err) => {
+        const permissionError = new FirestorePermissionError({
+          path: `exams/${exam.id}/questions`,
+          operation: 'list'
+        });
+        errorEmitter.emit('permission-error', permissionError);
+        setLoading(false);
+      });
   };
 
   const resetForm = () => {
@@ -118,68 +128,63 @@ export default function AdminExamsPage() {
     setQuestions(newQuestions);
   };
 
-  const handleSaveExam = async () => {
+  const handleSaveExam = () => {
     if (!title) {
       toast({ variant: "destructive", title: "Judul Wajib Diisi" });
       return;
     }
     
     setSaving(true);
-    try {
-      let examRef;
-      const examData = {
-        title,
-        durationMinutes: parseInt(duration),
-        updatedAt: new Date().toISOString(),
+    const examData = {
+      title,
+      durationMinutes: parseInt(duration),
+      updatedAt: new Date().toISOString(),
+    };
+
+    let examRef;
+    if (editingExamId) {
+      examRef = doc(db, "exams", editingExamId);
+      setDocumentNonBlocking(examRef, examData, { merge: true });
+    } else {
+      const newExamData = {
+        ...examData,
+        questionIds: [],
+        createdAt: new Date().toISOString(),
       };
+      // We need the ref to save sub-documents, so we generate a doc ref manually
+      examRef = doc(collection(db, "exams"));
+      setDocumentNonBlocking(examRef, newExamData, { merge: true });
+    }
 
-      if (editingExamId) {
-        examRef = doc(db, "exams", editingExamId);
-        await setDoc(examRef, examData, { merge: true });
-      } else {
-        const newExamData = {
-          ...examData,
-          questionIds: [],
-          createdAt: new Date().toISOString(),
-        };
-        examRef = await addDoc(collection(db, "exams"), newExamData);
-      }
-
-      // Update questions and track IDs
-      const questionIdsList: string[] = [];
-      const questionsPromises = questions.map(async (q) => {
-        const qId = q.id || doc(collection(db, "exams", examRef.id, "questions")).id;
-        const qRef = doc(db, "exams", examRef.id, "questions", qId);
-        questionIdsList.push(qId);
-        
-        return setDoc(qRef, {
-          id: qId,
-          examId: examRef.id,
-          questionText: q.questionText,
-          options: q.options,
-          correctAnswerIndex: q.correctAnswerIndex,
-          difficultyLevel: q.difficultyLevel,
-          imageUrl: q.imageUrl || "",
-          updatedAt: new Date().toISOString(),
-          createdAt: q.createdAt || new Date().toISOString()
-        }, { merge: true });
-      });
-
-      await Promise.all(questionsPromises);
+    const questionIdsList: string[] = [];
+    questions.forEach((q) => {
+      const qId = q.id || doc(collection(db, "exams", examRef.id, "questions")).id;
+      const qRef = doc(db, "exams", examRef.id, "questions", qId);
+      questionIdsList.push(qId);
       
-      // Update parent exam with question IDs
-      await setDoc(examRef, { questionIds: questionIdsList }, { merge: true });
+      setDocumentNonBlocking(qRef, {
+        id: qId,
+        examId: examRef.id,
+        questionText: q.questionText,
+        options: q.options,
+        correctAnswerIndex: q.correctAnswerIndex,
+        difficultyLevel: q.difficultyLevel,
+        imageUrl: q.imageUrl || "",
+        updatedAt: new Date().toISOString(),
+        createdAt: q.createdAt || new Date().toISOString()
+      }, { merge: true });
+    });
 
-      toast({ title: "Berhasil", description: editingExamId ? "Ujian telah diperbarui." : "Ujian baru telah disimpan." });
+    // Finalize parent exam with IDs
+    setDocumentNonBlocking(examRef, { questionIds: questionIdsList }, { merge: true });
+
+    toast({ title: "Berhasil", description: "Data ujian telah dikirim ke server." });
+    setTimeout(() => {
       resetForm();
       setActiveTab("list");
       fetchExams();
-    } catch (err) {
-      console.error(err);
-      toast({ variant: "destructive", title: "Error", description: "Gagal menyimpan ujian." });
-    } finally {
       setSaving(false);
-    }
+    }, 1000);
   };
 
   return (
@@ -388,7 +393,7 @@ export default function AdminExamsPage() {
               
               <Button className="w-full h-14 text-xl font-bold bg-primary shadow-lg hover:shadow-xl transition-all" onClick={handleSaveExam} disabled={saving}>
                 <Save className="h-6 w-6 mr-2" /> 
-                {saving ? "Sedang Menyimpan..." : (editingExamId ? "Perbarui Seluruh Paket Ujian" : "Simpan Seluruh Paket Ujian")}
+                {saving ? "Sedang Mengirim..." : (editingExamId ? "Perbarui Seluruh Paket Ujian" : "Simpan Seluruh Paket Ujian")}
               </Button>
             </TabsContent>
           </Tabs>
