@@ -4,9 +4,9 @@
 import { ProtectedRoute } from "@/components/auth/Protected-route";
 import { useAppAuth } from "@/contexts/auth-context";
 import { Button } from "@/components/ui/button";
-import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
+import { Card, CardHeader, CardTitle, CardContent, CardDescription, CardFooter } from "@/components/ui/card";
 import { useRouter } from "next/navigation";
-import { BookOpen, LogOut, Settings, Award, User, ListChecks } from "lucide-react";
+import { BookOpen, LogOut, Settings, Award, User, ListChecks, LayoutDashboard, ShieldCheck } from "lucide-react";
 import { useAuth, useFirestore } from "@/firebase";
 import { signOut } from "firebase/auth";
 import { useEffect, useState } from "react";
@@ -18,12 +18,19 @@ export default function DashboardPage() {
   const auth = useAuth();
   const db = useFirestore();
   const [exams, setExams] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchExams = async () => {
-      const q = query(collection(db, "exams"));
-      const querySnapshot = await getDocs(q);
-      setExams(querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      try {
+        const q = query(collection(db, "exams"));
+        const querySnapshot = await getDocs(q);
+        setExams(querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      } catch (err) {
+        console.error("Error fetching exams:", err);
+      } finally {
+        setLoading(false);
+      }
     };
     fetchExams();
   }, [db]);
@@ -35,15 +42,18 @@ export default function DashboardPage() {
 
   return (
     <ProtectedRoute>
-      <div className="min-h-screen bg-muted/30">
-        <header className="bg-primary text-white shadow-lg">
+      <div className="min-h-screen bg-muted/30 pb-12">
+        <header className="bg-primary text-white shadow-lg sticky top-0 z-50">
           <div className="container mx-auto px-4 h-16 flex items-center justify-between">
-            <h1 className="text-xl font-bold tracking-tight">Level Up Aceh</h1>
+            <div className="flex items-center gap-2">
+              <LayoutDashboard className="h-6 w-6 text-secondary" />
+              <h1 className="text-xl font-bold tracking-tight">Level Up Aceh</h1>
+            </div>
             <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2 mr-4 text-sm font-medium">
-                <User className="h-4 w-4" />
-                <span>{user?.email}</span>
-                <span className="bg-secondary text-secondary-foreground px-2 py-0.5 rounded text-[10px] uppercase font-bold">
+              <div className="hidden sm:flex items-center gap-2 mr-4 text-sm font-medium bg-black/10 px-3 py-1.5 rounded-full border border-white/20">
+                <User className="h-4 w-4 text-secondary" />
+                <span>{user?.displayName || user?.email}</span>
+                <span className="bg-secondary text-secondary-foreground px-2 py-0.5 rounded text-[10px] uppercase font-bold ml-2">
                   {role}
                 </span>
               </div>
@@ -56,115 +66,150 @@ export default function DashboardPage() {
         </header>
 
         <main className="container mx-auto px-4 py-8">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="md:col-span-2 space-y-6">
-              <section>
-                <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
-                  <BookOpen className="text-primary h-6 w-6" />
-                  Daftar Ujian Tersedia
-                </h2>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {exams.length > 0 ? (
-                    exams.map((exam) => (
-                      <Card key={exam.id} className="hover:shadow-md transition-shadow group">
-                        <CardHeader className="pb-2">
-                          <CardTitle className="text-lg group-hover:text-primary transition-colors">
-                            {exam.title || "Judul Ujian"}
-                          </CardTitle>
-                          <CardDescription>
-                            {exam.duration || 60} menit • {exam.difficulty_level ? `Level ${exam.difficulty_level}` : 'General'}
-                          </CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                          <Button 
-                            className="w-full bg-primary hover:bg-primary/90"
-                            onClick={() => router.push(`/ujian/${exam.id}`)}
-                          >
-                            Mulai Ujian
-                          </Button>
-                        </CardContent>
-                      </Card>
-                    ))
-                  ) : (
-                    <div className="col-span-2 py-10 text-center bg-white rounded-lg border border-dashed border-muted-foreground/30">
-                      <p className="text-muted-foreground">Tidak ada ujian yang tersedia saat ini.</p>
-                    </div>
-                  )}
-                </div>
-              </section>
-
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div className="lg:col-span-2 space-y-8">
+              {/* Admin Quick Access */}
               {role === 'admin' && (
-                <section>
-                  <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
-                    <Settings className="text-primary h-6 w-6" />
-                    Panel Admin
+                <section className="bg-primary/5 p-6 rounded-xl border border-primary/20 shadow-inner">
+                  <h2 className="text-2xl font-bold mb-4 flex items-center gap-2 text-primary">
+                    <ShieldCheck className="h-7 w-7" />
+                    Panel Administrator
                   </h2>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <Card className="bg-white border-l-4 border-primary">
-                      <CardHeader>
+                    <Card className="hover:shadow-md transition-all border-l-4 border-primary bg-white">
+                      <CardHeader className="pb-2">
                         <CardTitle className="text-lg flex items-center gap-2">
-                          <ListChecks className="h-5 w-5" />
-                          Kelola Soal
+                          <ListChecks className="h-5 w-5 text-primary" />
+                          Bank Soal & Ujian
                         </CardTitle>
-                        <CardDescription>Tambah atau edit bank soal ujian.</CardDescription>
+                        <CardDescription>Tambah, edit, atau hapus paket ujian.</CardDescription>
                       </CardHeader>
-                      <CardContent>
-                        <Button variant="outline" className="w-full" onClick={() => router.push('/admin/exams')}>
-                          Buka Manajemen
+                      <CardFooter>
+                        <Button className="w-full bg-primary hover:bg-primary/90" onClick={() => router.push('/admin/exams')}>
+                          Kelola Sekarang
                         </Button>
-                      </CardContent>
+                      </CardFooter>
                     </Card>
-                    <Card className="bg-white border-l-4 border-secondary">
-                      <CardHeader>
+                    <Card className="hover:shadow-md transition-all border-l-4 border-secondary bg-white">
+                      <CardHeader className="pb-2">
                         <CardTitle className="text-lg flex items-center gap-2">
-                          <Award className="h-5 w-5" />
-                          Laporan Siswa
+                          <Award className="h-5 w-5 text-secondary-foreground" />
+                          Analitik & Hasil
                         </CardTitle>
-                        <CardDescription>Lihat hasil raport dan skor IRT siswa.</CardDescription>
+                        <CardDescription>Lihat perkembangan skor dan laporan siswa.</CardDescription>
                       </CardHeader>
-                      <CardContent>
-                        <Button variant="outline" className="w-full" onClick={() => router.push('/admin/reports')}>
+                      <CardFooter>
+                        <Button variant="outline" className="w-full border-primary text-primary hover:bg-primary/10" onClick={() => router.push('/admin/reports')}>
                           Buka Laporan
                         </Button>
-                      </CardContent>
+                      </CardFooter>
                     </Card>
                   </div>
                 </section>
               )}
+
+              {/* Student Exams List */}
+              <section>
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-2xl font-bold flex items-center gap-2">
+                    <BookOpen className="text-primary h-7 w-7" />
+                    Ujian Aktif
+                  </h2>
+                  <span className="text-sm font-medium text-muted-foreground">{exams.length} Tersedia</span>
+                </div>
+                
+                {loading ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {[1, 2].map(i => (
+                      <Card key={i} className="animate-pulse h-40 bg-muted" />
+                    ))}
+                  </div>
+                ) : exams.length > 0 ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                    {exams.map((exam) => (
+                      <Card key={exam.id} className="hover:shadow-xl transition-all group border-t-4 border-primary/20 hover:border-primary">
+                        <CardHeader className="pb-2">
+                          <div className="flex justify-between items-start">
+                            <CardTitle className="text-xl group-hover:text-primary transition-colors">
+                              {exam.title || "Judul Ujian"}
+                            </CardTitle>
+                          </div>
+                          <CardDescription className="flex items-center gap-2 mt-1">
+                            <span className="bg-muted px-2 py-0.5 rounded text-xs font-semibold">
+                              {exam.durationMinutes || 60} menit
+                            </span>
+                            <span className="text-xs">•</span>
+                            <span className="text-xs capitalize">{exam.difficulty_level || 'General'}</span>
+                          </CardDescription>
+                        </CardHeader>
+                        <CardContent className="pt-4">
+                          <Button 
+                            className="w-full bg-primary hover:bg-primary/90 shadow-md group-hover:shadow-lg transition-all"
+                            onClick={() => router.push(`/ujian/${exam.id}`)}
+                          >
+                            Mulai Sekarang
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                ) : (
+                  <Card className="border-dashed border-2 py-12 text-center bg-white/50">
+                    <CardContent className="space-y-3">
+                      <BookOpen className="h-12 w-12 text-muted-foreground mx-auto opacity-20" />
+                      <p className="text-muted-foreground font-medium">Belum ada ujian yang ditugaskan untuk Anda.</p>
+                    </CardContent>
+                  </Card>
+                )}
+              </section>
             </div>
 
+            {/* Sidebar Stats */}
             <div className="space-y-6">
-              <Card className="bg-white">
+              <Card className="bg-white shadow-lg overflow-hidden border-none">
+                <div className="h-2 bg-primary" />
                 <CardHeader>
-                  <CardTitle className="text-lg">Statistik Saya</CardTitle>
+                  <CardTitle className="text-lg">Statistik Belajar</CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="flex justify-between items-center py-2 border-b">
-                    <span className="text-sm text-muted-foreground">Ujian Selesai</span>
-                    <span className="font-bold">0</span>
+                <CardContent className="space-y-4 pt-0">
+                  <div className="flex justify-between items-center py-3 border-b border-muted/50">
+                    <div className="flex items-center gap-2">
+                      <div className="h-2 w-2 rounded-full bg-green-500" />
+                      <span className="text-sm font-medium">Ujian Selesai</span>
+                    </div>
+                    <span className="font-bold text-lg text-primary">0</span>
                   </div>
-                  <div className="flex justify-between items-center py-2 border-b">
-                    <span className="text-sm text-muted-foreground">Rata-rata Skor</span>
-                    <span className="font-bold">0%</span>
+                  <div className="flex justify-between items-center py-3 border-b border-muted/50">
+                    <div className="flex items-center gap-2">
+                      <div className="h-2 w-2 rounded-full bg-blue-500" />
+                      <span className="text-sm font-medium">Rata-rata Skor</span>
+                    </div>
+                    <span className="font-bold text-lg text-primary">0%</span>
                   </div>
-                  <div className="flex justify-between items-center py-2">
-                    <span className="text-sm text-muted-foreground">Rank</span>
-                    <span className="font-bold text-secondary-foreground">--</span>
+                  <div className="flex justify-between items-center py-3">
+                    <div className="flex items-center gap-2">
+                      <div className="h-2 w-2 rounded-full bg-secondary" />
+                      <span className="text-sm font-medium">Peringkat</span>
+                    </div>
+                    <span className="font-bold text-secondary-foreground text-lg">--</span>
                   </div>
                 </CardContent>
               </Card>
 
-              <Card className="bg-primary text-white overflow-hidden relative">
+              <Card className="bg-primary text-white overflow-hidden relative shadow-xl border-none">
                 <CardHeader>
-                  <CardTitle className="text-lg relative z-10">Informasi Penting</CardTitle>
+                  <CardTitle className="text-lg relative z-10 flex items-center gap-2">
+                    <Settings className="h-5 w-5 text-secondary" />
+                    Pusat Informasi
+                  </CardTitle>
                 </CardHeader>
-                <CardContent className="relative z-10">
-                  <p className="text-sm opacity-90">
-                    Pastikan koneksi internet stabil sebelum memulai ujian. Dilarang berpindah tab selama ujian berlangsung.
+                <CardContent className="relative z-10 pt-0">
+                  <p className="text-sm opacity-90 leading-relaxed">
+                    Pastikan koneksi internet stabil sebelum memulai ujian. Sistem anti-cheat kami akan otomatis mencatat aktivitas tab-switching.
                   </p>
                 </CardContent>
-                <div className="absolute top-0 right-0 p-4 opacity-10">
-                  <Award className="h-24 w-24" />
+                <div className="absolute -bottom-6 -right-6 p-4 opacity-10">
+                  <Award className="h-32 w-32" />
                 </div>
               </Card>
             </div>
