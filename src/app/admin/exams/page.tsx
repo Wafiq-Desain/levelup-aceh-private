@@ -3,12 +3,12 @@
 
 import { ProtectedRoute } from "@/components/auth/Protected-route";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Trash, Save, ChevronLeft, LayoutList, FilePlus, Pencil } from "lucide-react";
+import { Plus, Trash, Save, ChevronLeft, LayoutList, FilePlus, Pencil, Image as ImageIcon } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useFirestore } from "@/firebase";
 import { collection, addDoc, getDocs, query, orderBy, doc, setDoc } from "firebase/firestore";
@@ -29,7 +29,7 @@ export default function AdminExamsPage() {
   const [title, setTitle] = useState("");
   const [duration, setDuration] = useState("60");
   const [questions, setQuestions] = useState<any[]>([
-    { questionText: "", options: ["", "", "", ""], correctAnswerIndex: 0, difficultyLevel: "medium" }
+    { questionText: "", options: ["", "", "", ""], correctAnswerIndex: 0, difficultyLevel: "medium", imageUrl: "" }
   ]);
 
   useEffect(() => {
@@ -51,7 +51,7 @@ export default function AdminExamsPage() {
   };
 
   const addQuestion = () => {
-    setQuestions([...questions, { questionText: "", options: ["", "", "", ""], correctAnswerIndex: 0, difficultyLevel: "medium" }]);
+    setQuestions([...questions, { questionText: "", options: ["", "", "", ""], correctAnswerIndex: 0, difficultyLevel: "medium", imageUrl: "" }]);
   };
 
   const removeQuestion = (index: number) => {
@@ -95,6 +95,7 @@ export default function AdminExamsPage() {
           options: q.options,
           correctAnswerIndex: q.correctAnswerIndex,
           difficultyLevel: q.difficultyLevel,
+          imageUrl: q.imageUrl || "",
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
         });
@@ -104,7 +105,7 @@ export default function AdminExamsPage() {
 
       toast({ title: "Berhasil", description: "Ujian baru telah disimpan." });
       setTitle("");
-      setQuestions([{ questionText: "", options: ["", "", "", ""], correctAnswerIndex: 0, difficultyLevel: "medium" }]);
+      setQuestions([{ questionText: "", options: ["", "", "", ""], correctAnswerIndex: 0, difficultyLevel: "medium", imageUrl: "" }]);
       setActiveTab("list");
       fetchExams();
     } catch (err) {
@@ -215,6 +216,17 @@ export default function AdminExamsPage() {
                           value={q.questionText} 
                           onChange={(e) => updateQuestion(qIdx, "questionText", e.target.value)} 
                           placeholder="Masukkan pertanyaan di sini... Gunakan $...$ untuk LaTeX."
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label className="flex items-center gap-2">
+                          <ImageIcon className="h-4 w-4" /> URL Foto Soal (Opsional)
+                        </Label>
+                        <Input 
+                          value={q.imageUrl || ""} 
+                          onChange={(e) => updateQuestion(qIdx, "imageUrl", e.target.value)} 
+                          placeholder="https://example.com/foto-soal.jpg"
                         />
                       </div>
                       

@@ -430,6 +430,17 @@ export default function UjianPage() {
                       {answers[currentQuestion?.id]?.isFlagged ? "HAPUS TANDA" : "RAGU-RAGU"}
                     </Button>
                   </div>
+                  
+                  {currentQuestion?.imageUrl && (
+                    <div className="mb-6 relative w-full aspect-video md:aspect-[21/9] rounded-xl overflow-hidden border bg-muted/20">
+                      <img 
+                        src={currentQuestion.imageUrl} 
+                        alt="Visual Soal" 
+                        className="object-contain w-full h-full"
+                      />
+                    </div>
+                  )}
+
                   <div className="text-xl leading-relaxed text-foreground font-semibold">
                     <LatexRenderer content={currentQuestion?.questionText || ""} />
                   </div>
