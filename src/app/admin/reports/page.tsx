@@ -5,7 +5,7 @@ import { ProtectedRoute } from "@/components/auth/Protected-route";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { ChevronLeft, Download, Search, FileText, Calendar, TrendingUp, User as UserIcon, AlertTriangle } from "lucide-react";
+import { ChevronLeft, Download, Search, FileText, Calendar, TrendingUp, User as UserIcon, AlertTriangle, Info } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useFirestore } from "@/firebase";
 import { collection, collectionGroup, getDocs, query, orderBy } from "firebase/firestore";
@@ -15,6 +15,7 @@ import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 export default function AdminReportsPage() {
   const router = useRouter();
@@ -25,13 +26,14 @@ export default function AdminReportsPage() {
   const [usersMap, setUsersMap] = useState<Record<string, any>>({});
   const [examsMap, setExamsMap] = useState<Record<string, any>>({});
   const [permissionDenied, setPermissionDenied] = useState(false);
+  const [indexMissing, setIndexMissing] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
       setPermissionDenied(false);
+      setIndexMissing(false);
       try {
-        // Fetch users and exams first
         const [usersSnap, examsSnap] = await Promise.all([
           getDocs(collection(db, "userProfiles")),
           getDocs(collection(db, "exams"))
@@ -45,7 +47,6 @@ export default function AdminReportsPage() {
         examsSnap.forEach(doc => eMap[doc.id] = doc.data());
         setExamsMap(eMap);
 
-        // Fetch results via collection group
         const resultsQuery = query(collectionGroup(db, "results"), orderBy("submissionTime", "desc"));
         const resultsSnap = await getDocs(resultsQuery);
         const resultsList = resultsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -53,7 +54,9 @@ export default function AdminReportsPage() {
         setLoading(false);
       } catch (err: any) {
         console.error("Error fetching reports:", err);
-        if (err.code === 'permission-denied' || err.message?.includes('permissions')) {
+        if (err.message?.includes("FAILED_PRECONDITION") || err.message?.includes("index")) {
+          setIndexMissing(true);
+        } else if (err.code === 'permission-denied' || err.message?.includes('permissions')) {
           setPermissionDenied(true);
           const permissionError = new FirestorePermissionError({
             path: 'collectionGroup(results)',
@@ -88,21 +91,30 @@ export default function AdminReportsPage() {
               </Button>
               <h1 className="text-xl font-bold text-primary">Laporan Hasil Ujian</h1>
             </div>
-            <Button variant="outline" size="sm" onClick={() => window.print()} className="hidden sm:flex" disabled={permissionDenied}>
+            <Button variant="outline" size="sm" onClick={() => window.print()} className="hidden sm:flex" disabled={permissionDenied || indexMissing}>
               <Download className="h-4 w-4 mr-2" /> Cetak Laporan
             </Button>
           </div>
         </header>
 
         <main className="container mx-auto px-4 py-8 max-w-6xl">
+          {indexMissing && (
+            <Alert variant="destructive" className="mb-6 bg-amber-50 border-amber-500 text-amber-900">
+              <Info className="h-4 w-4 text-amber-600" />
+              <AlertTitle className="font-bold">Indeks Firestore Diperlukan</AlertTitle>
+              <AlertDescription>
+                Halaman ini memerlukan indeks kueri grup untuk berfungsi. Silakan klik link yang muncul di pesan error konsol Anda atau tunggu proses pembuatan indeks selesai di Console Firebase.
+              </AlertDescription>
+            </Alert>
+          )}
+
           {permissionDenied ? (
             <Card className="border-destructive bg-destructive/5">
               <CardContent className="pt-6 text-center space-y-4">
                 <AlertTriangle className="h-12 w-12 text-destructive mx-auto" />
                 <h2 className="text-xl font-bold text-destructive">Akses Database Ditolak</h2>
                 <p className="text-muted-foreground max-w-lg mx-auto">
-                  Akun Anda belum memiliki izin akses penuh ke database hasil ujian. 
-                  Pastikan UID Anda sudah terdaftar di koleksi <strong>adminUsers</strong> di Console Firebase.
+                  Akun Anda belum memiliki izin akses penuh. Pastikan UID Anda sudah terdaftar di koleksi <strong>adminUsers</strong> di Console Firebase.
                 </p>
                 <Button variant="outline" onClick={() => window.location.reload()}>Coba Lagi</Button>
               </CardContent>
