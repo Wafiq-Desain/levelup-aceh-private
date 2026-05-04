@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from "react";
@@ -11,7 +10,8 @@ import {
   collection, 
   getDocs,
   query,
-  orderBy
+  orderBy,
+  increment
 } from "firebase/firestore";
 import { useFirestore } from "@/firebase";
 import { 
@@ -33,7 +33,8 @@ import {
   CheckCircle2, 
   Flag,
   User as UserIcon,
-  BookOpen
+  BookOpen,
+  ShieldAlert
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
@@ -53,7 +54,9 @@ export default function UjianPage() {
   const [loading, setLoading] = useState(true);
   const [timeLeft, setTimeLeft] = useState(3600);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [warningCount, setWarningCount] = useState(0);
 
+  // Security: Prevent Right Click and Selection
   useEffect(() => {
     const preventDefault = (e: Event) => e.preventDefault();
     document.addEventListener("contextmenu", preventDefault);
@@ -67,11 +70,15 @@ export default function UjianPage() {
     };
   }, []);
 
+  // Anti-Cheat: Tab Switching Detection
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.hidden) {
         setIsBlurred(true);
         if (user && examId) {
+          const newWarningCount = warningCount + 1;
+          setWarningCount(newWarningCount);
+          
           const warningRef = collection(db, "users", user.uid, "examSessions", examId as string, "antiCheatWarnings");
           const warningData = {
             timestamp: new Date().toISOString(),
@@ -79,17 +86,25 @@ export default function UjianPage() {
             createdAt: new Date().toISOString()
           };
           addDocumentNonBlocking(warningRef, warningData);
+          
+          // Also update warning count in session
+          const sessionRef = doc(db, "users", user.uid, "examSessions", examId as string);
+          updateDocumentNonBlocking(sessionRef, { 
+            antiCheatWarningCount: increment(1),
+            updatedAt: new Date().toISOString() 
+          });
+
           toast({
             variant: "destructive",
             title: "Peringatan Keamanan!",
-            description: "Pindah tab terdeteksi. Aktivitas Anda telah dicatat oleh sistem.",
+            description: "Pindah tab terdeteksi. Pelanggaran Anda telah dicatat.",
           });
         }
       }
     };
     document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
-  }, [user, examId, toast, db]);
+  }, [user, examId, toast, db, warningCount]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -113,6 +128,7 @@ export default function UjianPage() {
           if (sessionSnap.exists()) {
             const sessionData = sessionSnap.data();
             setCurrentIndex(sessionData.currentQuestionIndex || 0);
+            setWarningCount(sessionData.antiCheatWarningCount || 0);
             
             const answersRef = collection(db, "users", user.uid, "examSessions", examId as string, "examAnswers");
             const answersSnap = await getDocs(answersRef);
@@ -134,6 +150,7 @@ export default function UjianPage() {
               currentQuestionIndex: 0,
               examAnswerIds: [],
               antiCheatWarningIds: [],
+              antiCheatWarningCount: 0,
               isCompleted: false,
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString()
@@ -232,8 +249,6 @@ export default function UjianPage() {
     setIsSubmitting(true);
     
     try {
-      // IRT SCORING LOGIC
-      // Weights: Easy=1, Medium=3, Hard=5
       const weights: Record<string, number> = { 'easy': 1, 'medium': 3, 'hard': 5 };
       let totalEarnedWeight = 0;
       let totalMaxWeight = 0;
@@ -257,20 +272,19 @@ export default function UjianPage() {
         examId: examId,
         examSessionId: examId,
         submissionTime: new Date().toISOString(),
-        totalScore: irtScore, // Final IRT Score
+        totalScore: irtScore,
         weightedScore: totalEarnedWeight,
         correctAnswerCount: correctCount,
         incorrectAnswerCount: questions.length - correctCount,
         unansweredCount: questions.length - Object.keys(answers).length,
-        resultAnswerIds: [],
-        antiCheatWarningCount: 0,
+        antiCheatWarningCount: warningCount,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       };
 
       await setDocumentNonBlocking(resultRef, resultData, { merge: true });
 
-      toast({ title: "Ujian Selesai!", description: "Skor IRT Anda telah berhasil dikirim." });
+      toast({ title: "Ujian Selesai!", description: "Skor Anda telah berhasil dikirim." });
       router.push("/dashboard");
     } catch (err) {
       toast({ variant: "destructive", title: "Gagal Mengirim", description: "Terjadi kesalahan saat menyimpan hasil." });
@@ -285,14 +299,14 @@ export default function UjianPage() {
 
   return (
     <ProtectedRoute>
-      <div className={cn("min-h-screen bg-muted/30 transition-all duration-500", isBlurred && "blur-2xl grayscale pointer-events-none")}>
+      <div className={cn("min-h-screen bg-muted/30 transition-all duration-500", isBlurred && "blur-xl grayscale pointer-events-none")}>
         <header className="sticky top-0 z-50 bg-white border-b shadow-sm">
           <div className="container mx-auto px-4 h-20 flex items-center justify-between">
             <div className="flex flex-col">
               <h2 className="text-xl font-bold text-primary truncate max-w-[200px] md:max-w-md">{exam?.title}</h2>
               <div className="flex items-center gap-2 text-sm text-muted-foreground mt-1">
-                <UserIcon className="h-4 w-4" />
-                <span className="font-semibold">{user?.displayName || user?.email}</span>
+                <ShieldAlert className={cn("h-4 w-4", warningCount > 0 ? "text-destructive" : "text-green-500")} />
+                <span className="font-semibold">Pelanggaran: {warningCount}</span>
               </div>
             </div>
             
@@ -314,14 +328,14 @@ export default function UjianPage() {
 
         <main className="container mx-auto px-4 py-8">
           {isBlurred && (
-            <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm pointer-events-auto">
-              <Card className="max-w-sm text-center p-8 space-y-6 shadow-2xl border-t-8 border-destructive">
-                <AlertCircle className="h-16 w-16 text-destructive mx-auto" />
+            <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-md pointer-events-auto">
+              <Card className="max-w-md text-center p-10 space-y-6 shadow-2xl border-t-8 border-destructive">
+                <ShieldAlert className="h-20 w-20 text-destructive mx-auto animate-bounce" />
                 <div className="space-y-2">
-                  <CardTitle className="text-2xl font-bold">PERINGATAN KERAS!</CardTitle>
-                  <p className="text-muted-foreground font-medium">Anda terdeteksi meninggalkan halaman ujian. Klik tombol di bawah untuk kembali.</p>
+                  <CardTitle className="text-3xl font-black text-destructive">DETEKSI PELANGGARAN!</CardTitle>
+                  <p className="text-muted-foreground text-lg font-medium">Anda terdeteksi meninggalkan halaman ujian atau mencoba melakukan screenshot. Aktivitas ini telah dicatat oleh sistem admin.</p>
                 </div>
-                <Button className="w-full bg-primary h-14 text-xl font-bold" onClick={() => setIsBlurred(false)}>KEMBALI KE UJIAN</Button>
+                <Button className="w-full bg-primary h-16 text-2xl font-bold shadow-xl hover:scale-105 transition-transform" onClick={() => setIsBlurred(false)}>SAYA MENGERTI</Button>
               </Card>
             </div>
           )}
@@ -341,7 +355,8 @@ export default function UjianPage() {
                       return (
                         <button key={i} onClick={() => { setCurrentIndex(i); saveIndex(i); }} className={cn(
                           "h-12 rounded-lg text-sm font-black transition-all border-2 shadow-sm flex items-center justify-center relative",
-                          isActive || isFlagged ? "bg-secondary text-secondary-foreground border-secondary scale-105 ring-2 ring-secondary ring-offset-2 z-10" 
+                          isActive ? "bg-secondary text-secondary-foreground border-secondary scale-110 z-10" 
+                          : isFlagged ? "bg-amber-400 text-black border-amber-500"
                           : hasAnswer ? "bg-primary/10 text-primary border-primary/30" : "bg-white text-muted-foreground border-muted hover:border-primary/50"
                         )}>
                           {i + 1}
@@ -359,7 +374,7 @@ export default function UjianPage() {
                 <CardHeader className="bg-muted/5 border-b p-8">
                   <div className="flex items-center justify-between mb-6">
                     <span className="text-xs font-black tracking-widest text-primary px-4 py-1.5 bg-primary/10 rounded-full uppercase">Soal Nomor {currentIndex + 1}</span>
-                    <Button variant="outline" size="sm" onClick={handleToggleFlag} className={cn("gap-2 font-bold transition-all px-6 border-2", answers[currentQuestion?.id]?.isFlagged ? "bg-secondary text-secondary-foreground border-secondary" : "text-muted-foreground hover:border-primary/50")}>
+                    <Button variant="outline" size="sm" onClick={handleToggleFlag} className={cn("gap-2 font-bold transition-all px-6 border-2", answers[currentQuestion?.id]?.isFlagged ? "bg-amber-400 text-black border-amber-500" : "text-muted-foreground hover:border-primary/50")}>
                       <Flag className={cn("h-4 w-4", answers[currentQuestion?.id]?.isFlagged && "fill-current")} />
                       {answers[currentQuestion?.id]?.isFlagged ? "HAPUS TANDA" : "RAGU-RAGU"}
                     </Button>
