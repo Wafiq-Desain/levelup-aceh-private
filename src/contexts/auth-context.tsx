@@ -30,11 +30,18 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       setUser(firebaseUser);
       if (firebaseUser) {
         try {
-          const userDoc = await getDoc(doc(db, "userProfiles", firebaseUser.uid));
-          if (userDoc.exists()) {
-            setRole(userDoc.data().role as "admin" | "student");
+          // Priority check: adminUsers collection
+          const adminDoc = await getDoc(doc(db, "adminUsers", firebaseUser.uid));
+          if (adminDoc.exists()) {
+            setRole("admin");
           } else {
-            setRole("student");
+            // Fallback: check userProfiles
+            const userDoc = await getDoc(doc(db, "userProfiles", firebaseUser.uid));
+            if (userDoc.exists()) {
+              setRole(userDoc.data().role === "admin" ? "admin" : "student");
+            } else {
+              setRole("student");
+            }
           }
         } catch (error) {
           console.error("Error fetching role:", error);
