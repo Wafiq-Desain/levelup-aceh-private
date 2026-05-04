@@ -59,6 +59,7 @@ export default function AdminExamsPage() {
     
     // Fetch questions for this exam
     try {
+      setLoading(true);
       const qSnap = await getDocs(query(collection(db, "exams", exam.id, "questions"), orderBy("createdAt", "asc")));
       const qList = qSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       
@@ -72,6 +73,8 @@ export default function AdminExamsPage() {
     } catch (err) {
       console.error("Error fetching questions:", err);
       toast({ variant: "destructive", title: "Error", description: "Gagal memuat soal ujian." });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -142,11 +145,12 @@ export default function AdminExamsPage() {
         examRef = await addDoc(collection(db, "exams"), newExamData);
       }
 
-      // Hapus soal lama jika sedang mengedit (opsional, tergantung strategi update)
-      // Untuk kesederhanaan, kita update/set soal berdasarkan urutan
-      const questionsPromises = questions.map((q, idx) => {
+      // Update questions and track IDs
+      const questionIdsList: string[] = [];
+      const questionsPromises = questions.map(async (q) => {
         const qId = q.id || doc(collection(db, "exams", examRef.id, "questions")).id;
         const qRef = doc(db, "exams", examRef.id, "questions", qId);
+        questionIdsList.push(qId);
         
         return setDoc(qRef, {
           id: qId,
@@ -158,10 +162,13 @@ export default function AdminExamsPage() {
           imageUrl: q.imageUrl || "",
           updatedAt: new Date().toISOString(),
           createdAt: q.createdAt || new Date().toISOString()
-        });
+        }, { merge: true });
       });
 
       await Promise.all(questionsPromises);
+      
+      // Update parent exam with question IDs
+      await setDoc(examRef, { questionIds: questionIdsList }, { merge: true });
 
       toast({ title: "Berhasil", description: editingExamId ? "Ujian telah diperbarui." : "Ujian baru telah disimpan." });
       resetForm();
@@ -184,12 +191,15 @@ export default function AdminExamsPage() {
               <Button variant="ghost" size="icon" onClick={() => router.push('/dashboard')}>
                 <ChevronLeft className="h-5 w-5" />
               </Button>
-              <h1 className="text-xl font-bold">{editingExamId ? "Edit Ujian" : "Manajemen Ujian"}</h1>
+              <h1 className="text-xl font-bold">{editingExamId ? "Mode Edit Ujian" : "Manajemen Ujian"}</h1>
             </div>
             <div className="flex gap-2">
               {editingExamId && (
-                <Button variant="outline" onClick={resetForm}>
-                  Batal
+                <Button variant="outline" onClick={() => {
+                  resetForm();
+                  setActiveTab("list");
+                }}>
+                  Batal Edit
                 </Button>
               )}
               {activeTab === 'new' && (
@@ -218,7 +228,10 @@ export default function AdminExamsPage() {
 
             <TabsContent value="list" className="space-y-4">
               {loading ? (
-                <div className="text-center py-20">Memuat data...</div>
+                <div className="text-center py-20 flex flex-col items-center gap-4">
+                  <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary"></div>
+                  <span>Memuat data ujian...</span>
+                </div>
               ) : exams.length === 0 ? (
                 <Card className="border-dashed border-2 py-20 text-center">
                   <p className="text-muted-foreground mb-4">Belum ada ujian yang dibuat.</p>
@@ -227,12 +240,12 @@ export default function AdminExamsPage() {
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {exams.map((exam) => (
-                    <Card key={exam.id} className="hover:shadow-md transition-all">
+                    <Card key={exam.id} className="hover:shadow-md transition-all border-l-4 border-primary">
                       <CardHeader>
                         <CardTitle className="text-lg">{exam.title}</CardTitle>
                         <CardDescription>{exam.durationMinutes} Menit • Dibuat {new Date(exam.createdAt).toLocaleDateString()}</CardDescription>
                       </CardHeader>
-                      <CardFooter className="flex justify-end gap-2 border-t pt-4">
+                      <CardFooter className="flex justify-end gap-2 border-t pt-4 bg-muted/5">
                         <Button variant="outline" size="sm" onClick={() => router.push(`/ujian/${exam.id}`)}>
                           Pratinjau
                         </Button>
@@ -272,77 +285,77 @@ export default function AdminExamsPage() {
                 </div>
 
                 {questions.map((q, qIdx) => (
-                  <Card key={qIdx} className="relative overflow-hidden">
-                    <div className="absolute top-0 left-0 w-1 h-full bg-primary" />
-                    <CardHeader className="flex flex-row items-center justify-between">
-                      <CardTitle className="text-lg">Soal #{qIdx + 1}</CardTitle>
+                  <Card key={qIdx} className="relative overflow-hidden shadow-sm border-t-2 border-primary">
+                    <CardHeader className="flex flex-row items-center justify-between bg-muted/10">
+                      <CardTitle className="text-lg">Soal Nomor {qIdx + 1}</CardTitle>
                       <Button variant="ghost" size="icon" className="text-destructive" onClick={() => removeQuestion(qIdx)} disabled={questions.length <= 1}>
                         <Trash className="h-4 w-4" />
                       </Button>
                     </CardHeader>
-                    <CardContent className="space-y-4">
+                    <CardContent className="space-y-4 pt-6">
                       <div className="space-y-2">
                         <Label>Pertanyaan (Mendukung LaTeX)</Label>
                         <Textarea 
                           value={q.questionText} 
                           onChange={(e) => updateQuestion(qIdx, "questionText", e.target.value)} 
-                          placeholder="Masukkan pertanyaan di sini... Gunakan $...$ untuk LaTeX."
+                          placeholder="Masukkan pertanyaan di sini... Gunakan $...$ untuk rumus matematika."
                           className="min-h-[100px]"
                         />
                       </div>
 
                       <div className="space-y-4 p-4 border rounded-lg bg-muted/20">
                         <Label className="flex items-center gap-2 mb-2 font-bold">
-                          <ImageIcon className="h-4 w-4" /> Media Gambar Soal
+                          <ImageIcon className="h-4 w-4 text-primary" /> Media Gambar Soal
                         </Label>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div className="space-y-2">
-                            <Label className="text-xs">Pilih Gambar Dari Komputer</Label>
+                            <Label className="text-xs">Unggah dari Perangkat</Label>
                             <Input 
                               type="file" 
                               accept="image/*" 
                               onChange={(e) => handleFileUpload(qIdx, e)}
-                              className="cursor-pointer"
+                              className="cursor-pointer bg-white"
                             />
                           </div>
                           <div className="space-y-2">
-                            <Label className="text-xs">Atau Masukkan URL (Opsional)</Label>
+                            <Label className="text-xs">Atau URL Gambar</Label>
                             <Input 
                               value={q.imageUrl || ""} 
                               onChange={(e) => updateQuestion(qIdx, "imageUrl", e.target.value)} 
                               placeholder="https://example.com/foto.jpg"
+                              className="bg-white"
                             />
                           </div>
                         </div>
                         {q.imageUrl && (
                           <div className="mt-4 border rounded-lg p-2 bg-white flex justify-center relative group">
-                            <img src={q.imageUrl} alt="Preview" className="max-h-40 object-contain rounded" />
+                            <img src={q.imageUrl} alt="Preview" className="max-h-48 object-contain rounded" />
                             <Button 
                               variant="destructive" 
                               size="icon" 
-                              className="absolute top-2 right-2 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                              className="absolute top-2 right-2 h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
                               onClick={() => updateQuestion(qIdx, "imageUrl", "")}
                             >
-                              <X className="h-3 w-3" />
+                              <X className="h-4 w-4" />
                             </Button>
                           </div>
                         )}
                       </div>
                       
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {q.options.map((opt: string, oIdx: number) => (
                           <div key={oIdx} className="space-y-2">
                             <Label>Opsi {String.fromCharCode(65 + oIdx)}</Label>
-                            <Input value={opt} onChange={(e) => updateOption(qIdx, oIdx, e.target.value)} />
+                            <Input value={opt} onChange={(e) => updateOption(qIdx, oIdx, e.target.value)} placeholder={`Jawaban ${String.fromCharCode(65 + oIdx)}`} />
                           </div>
                         ))}
                       </div>
 
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t">
                         <div className="space-y-2">
-                          <Label>Jawaban Benar</Label>
+                          <Label className="font-bold text-primary">Kunci Jawaban Benar</Label>
                           <Select value={String(q.correctAnswerIndex)} onValueChange={(val) => updateQuestion(qIdx, "correctAnswerIndex", parseInt(val))}>
-                            <SelectTrigger>
+                            <SelectTrigger className="bg-white">
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
@@ -355,9 +368,9 @@ export default function AdminExamsPage() {
                           </Select>
                         </div>
                         <div className="space-y-2">
-                          <Label>Tingkat Kesulitan (IRT)</Label>
+                          <Label className="font-bold">Tingkat Kesulitan (IRT)</Label>
                           <Select value={q.difficultyLevel} onValueChange={(val) => updateQuestion(qIdx, "difficultyLevel", val)}>
-                            <SelectTrigger>
+                            <SelectTrigger className="bg-white">
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
@@ -373,9 +386,9 @@ export default function AdminExamsPage() {
                 ))}
               </div>
               
-              <Button className="w-full h-12 text-lg bg-primary" onClick={handleSaveExam} disabled={saving}>
-                <Save className="h-5 w-5 mr-2" /> 
-                {saving ? "Sedang Menyimpan..." : (editingExamId ? "Perbarui Seluruh Ujian" : "Simpan Seluruh Ujian")}
+              <Button className="w-full h-14 text-xl font-bold bg-primary shadow-lg hover:shadow-xl transition-all" onClick={handleSaveExam} disabled={saving}>
+                <Save className="h-6 w-6 mr-2" /> 
+                {saving ? "Sedang Menyimpan..." : (editingExamId ? "Perbarui Seluruh Paket Ujian" : "Simpan Seluruh Paket Ujian")}
               </Button>
             </TabsContent>
           </Tabs>
