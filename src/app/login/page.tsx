@@ -95,14 +95,14 @@ export default function LoginPage() {
       <Card className="relative z-10 w-full max-w-md shadow-2xl border-t-8 border-primary overflow-hidden">
         <CardHeader className="text-center space-y-4 pt-10">
           <div className="mx-auto w-24 h-24 relative rounded-full overflow-hidden bg-white p-1 shadow-inner">
-            {logo?.imageUrl && (
+            {logo?.imageUrl ? (
               <Image 
                 src={logo.imageUrl} 
                 alt="Level Up Aceh Logo" 
                 fill 
                 className="object-contain"
               />
-            )}
+            ) : null}
           </div>
           <div>
             <CardTitle className="text-3xl font-bold text-primary">Level Up Aceh Private</CardTitle>
