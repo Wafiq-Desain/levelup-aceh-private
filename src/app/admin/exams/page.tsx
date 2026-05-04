@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Trash, Save, ChevronLeft, LayoutList, FilePlus, Pencil, Image as ImageIcon } from "lucide-react";
+import { Plus, Trash, Save, ChevronLeft, LayoutList, FilePlus, Pencil, Image as ImageIcon, Upload } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useFirestore } from "@/firebase";
 import { collection, addDoc, getDocs, query, orderBy, doc, setDoc } from "firebase/firestore";
@@ -64,6 +64,17 @@ export default function AdminExamsPage() {
     setQuestions(newQuestions);
   };
 
+  const handleFileUpload = (index: number, e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        updateQuestion(index, "imageUrl", reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   const updateOption = (qIdx: number, oIdx: number, value: string) => {
     const newQuestions = [...questions];
     newQuestions[qIdx].options[oIdx] = value;
@@ -80,12 +91,11 @@ export default function AdminExamsPage() {
       const examRef = await addDoc(collection(db, "exams"), {
         title,
         durationMinutes: parseInt(duration),
-        questionIds: [], // Will be updated or used for reference
+        questionIds: [], 
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       });
 
-      // Add questions to subcollection
       const questionsPromises = questions.map((q, idx) => {
         const qRef = doc(collection(db, "exams", examRef.id, "questions"));
         return setDoc(qRef, {
@@ -216,18 +226,40 @@ export default function AdminExamsPage() {
                           value={q.questionText} 
                           onChange={(e) => updateQuestion(qIdx, "questionText", e.target.value)} 
                           placeholder="Masukkan pertanyaan di sini... Gunakan $...$ untuk LaTeX."
+                          className="min-h-[100px]"
                         />
                       </div>
 
-                      <div className="space-y-2">
-                        <Label className="flex items-center gap-2">
-                          <ImageIcon className="h-4 w-4" /> URL Foto Soal (Opsional)
+                      <div className="space-y-4 p-4 border rounded-lg bg-muted/20">
+                        <Label className="flex items-center gap-2 mb-2 font-bold">
+                          <ImageIcon className="h-4 w-4" /> Media Gambar Soal
                         </Label>
-                        <Input 
-                          value={q.imageUrl || ""} 
-                          onChange={(e) => updateQuestion(qIdx, "imageUrl", e.target.value)} 
-                          placeholder="https://example.com/foto-soal.jpg"
-                        />
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <Label className="text-xs">Pilih Gambar Dari Komputer</Label>
+                            <div className="flex gap-2">
+                              <Input 
+                                type="file" 
+                                accept="image/*" 
+                                onChange={(e) => handleFileUpload(qIdx, e)}
+                                className="cursor-pointer"
+                              />
+                            </div>
+                          </div>
+                          <div className="space-y-2">
+                            <Label className="text-xs">Atau Masukkan URL (Opsional)</Label>
+                            <Input 
+                              value={q.imageUrl || ""} 
+                              onChange={(e) => updateQuestion(qIdx, "imageUrl", e.target.value)} 
+                              placeholder="https://example.com/foto.jpg"
+                            />
+                          </div>
+                        </div>
+                        {q.imageUrl && (
+                          <div className="mt-4 border rounded-lg p-2 bg-white flex justify-center">
+                            <img src={q.imageUrl} alt="Preview" className="max-h-40 object-contain rounded" />
+                          </div>
+                        )}
                       </div>
                       
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
