@@ -1,7 +1,7 @@
 
 "use client";
 
-import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
+import { ProtectedRoute } from "@/components/auth/Protected-route";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -29,19 +29,16 @@ export default function AdminReportsPage() {
     const fetchData = async () => {
       setLoading(true);
       try {
-        // Pemetaan Profil
         const usersSnap = await getDocs(collection(db, "userProfiles"));
         const uMap: Record<string, any> = {};
         usersSnap.forEach(doc => uMap[doc.id] = doc.data());
         setUsersMap(uMap);
 
-        // Pemetaan Ujian
         const examsSnap = await getDocs(collection(db, "exams"));
         const eMap: Record<string, any> = {};
         examsSnap.forEach(doc => eMap[doc.id] = doc.data());
         setExamsMap(eMap);
 
-        // Kueri Laporan
         const resultsQuery = query(collectionGroup(db, "results"), orderBy("submissionTime", "desc"));
         getDocs(resultsQuery)
           .then(resultsSnap => {

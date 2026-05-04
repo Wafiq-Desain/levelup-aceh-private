@@ -1,7 +1,7 @@
 
 "use client";
 
-import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
+import { ProtectedRoute } from "@/components/auth/Protected-route";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -14,7 +14,7 @@ import { useFirestore } from "@/firebase";
 import { collection, getDocs, query, orderBy, doc } from "firebase/firestore";
 import { errorEmitter } from "@/firebase/error-emitter";
 import { FirestorePermissionError } from "@/firebase/errors";
-import { setDocumentNonBlocking, addDocumentNonBlocking } from "@/firebase/non-blocking-updates";
+import { setDocumentNonBlocking } from "@/firebase/non-blocking-updates";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -146,13 +146,13 @@ export default function AdminExamsPage() {
       examRef = doc(db, "exams", editingExamId);
       setDocumentNonBlocking(examRef, examData, { merge: true });
     } else {
+      examRef = doc(collection(db, "exams"));
       const newExamData = {
         ...examData,
+        id: examRef.id,
         questionIds: [],
         createdAt: new Date().toISOString(),
       };
-      // We need the ref to save sub-documents, so we generate a doc ref manually
-      examRef = doc(collection(db, "exams"));
       setDocumentNonBlocking(examRef, newExamData, { merge: true });
     }
 
@@ -175,10 +175,9 @@ export default function AdminExamsPage() {
       }, { merge: true });
     });
 
-    // Finalize parent exam with IDs
     setDocumentNonBlocking(examRef, { questionIds: questionIdsList }, { merge: true });
 
-    toast({ title: "Berhasil", description: "Data ujian telah dikirim ke server." });
+    toast({ title: "Berhasil", description: "Paket ujian telah disimpan." });
     setTimeout(() => {
       resetForm();
       setActiveTab("list");
