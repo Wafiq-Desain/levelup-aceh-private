@@ -4,7 +4,7 @@
 import { useState } from "react";
 import { createUserWithEmailAndPassword, updateProfile, GoogleAuthProvider, signInWithPopup } from "firebase/auth";
 import { doc, setDoc, getDoc } from "firebase/firestore";
-import { auth, db } from "@/lib/firebase-config";
+import { useAuth, useFirestore } from "@/firebase";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,6 +24,8 @@ export default function RegisterPage() {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
   const { toast } = useToast();
+  const auth = useAuth();
+  const db = useFirestore();
 
   const logo = PlaceHolderImages.find(img => img.id === 'logo');
   const bg = PlaceHolderImages.find(img => img.id === 'login-bg');
@@ -123,18 +125,17 @@ export default function RegisterPage() {
       <Card className="relative z-10 w-full max-w-md shadow-2xl border-t-8 border-primary overflow-hidden">
         <CardHeader className="text-center space-y-4 pt-10">
           <div className="mx-auto w-24 h-24 relative rounded-full overflow-hidden bg-white p-1 shadow-inner">
-            {logo?.imageUrl && (
+            {logo?.imageUrl ? (
               <Image 
                 src={logo.imageUrl} 
                 alt="Level Up Aceh Logo" 
                 fill 
                 className="object-contain"
-                data-ai-hint="educational logo"
               />
-            )}
+            ) : null}
           </div>
           <div>
-            <CardTitle className="text-3xl font-bold font-headline text-primary">Daftar Akun Baru</CardTitle>
+            <CardTitle className="text-3xl font-bold text-primary">Daftar Akun Baru</CardTitle>
             <CardDescription className="text-sm">Bergabunglah untuk memulai persiapan ujian Anda</CardDescription>
           </div>
         </CardHeader>
@@ -235,10 +236,6 @@ export default function RegisterPage() {
             <Link href="/login" className="text-primary font-bold hover:underline">
               Masuk di sini
             </Link>
-          </div>
-          
-          <div className="mt-8 text-center text-xs text-muted-foreground">
-            © {new Date().getFullYear()} Level Up Aceh Private. Seluruh hak cipta dilindungi.
           </div>
         </CardContent>
       </Card>
