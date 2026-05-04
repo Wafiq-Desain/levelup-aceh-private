@@ -8,10 +8,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Trash, Save, ChevronLeft, LayoutList, FilePlus, Pencil, Image as ImageIcon, Upload } from "lucide-react";
+import { Plus, Trash, Save, ChevronLeft, LayoutList, FilePlus, Pencil, Image as ImageIcon, X } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useFirestore } from "@/firebase";
-import { collection, addDoc, getDocs, query, orderBy, doc, setDoc } from "firebase/firestore";
+import { collection, addDoc, getDocs, query, orderBy, doc, setDoc, deleteDoc } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -24,8 +24,10 @@ export default function AdminExamsPage() {
   const [activeTab, setActiveTab] = useState("list");
   const [exams, setExams] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
   // Form State
+  const [editingExamId, setEditingExamId] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [duration, setDuration] = useState("60");
   const [questions, setQuestions] = useState<any[]>([
@@ -50,12 +52,44 @@ export default function AdminExamsPage() {
     }
   };
 
+  const handleEditExam = async (exam: any) => {
+    setEditingExamId(exam.id);
+    setTitle(exam.title);
+    setDuration(String(exam.durationMinutes));
+    
+    // Fetch questions for this exam
+    try {
+      const qSnap = await getDocs(query(collection(db, "exams", exam.id, "questions"), orderBy("createdAt", "asc")));
+      const qList = qSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      
+      if (qList.length > 0) {
+        setQuestions(qList);
+      } else {
+        setQuestions([{ questionText: "", options: ["", "", "", "", ""], correctAnswerIndex: 0, difficultyLevel: "medium", imageUrl: "" }]);
+      }
+      
+      setActiveTab("new");
+    } catch (err) {
+      console.error("Error fetching questions:", err);
+      toast({ variant: "destructive", title: "Error", description: "Gagal memuat soal ujian." });
+    }
+  };
+
+  const resetForm = () => {
+    setEditingExamId(null);
+    setTitle("");
+    setDuration("60");
+    setQuestions([{ questionText: "", options: ["", "", "", "", ""], correctAnswerIndex: 0, difficultyLevel: "medium", imageUrl: "" }]);
+  };
+
   const addQuestion = () => {
     setQuestions([...questions, { questionText: "", options: ["", "", "", "", ""], correctAnswerIndex: 0, difficultyLevel: "medium", imageUrl: "" }]);
   };
 
   const removeQuestion = (index: number) => {
-    setQuestions(questions.filter((_, i) => i !== index));
+    if (questions.length > 1) {
+      setQuestions(questions.filter((_, i) => i !== index));
+    }
   };
 
   const updateQuestion = (index: number, field: string, value: any) => {
@@ -87,40 +121,57 @@ export default function AdminExamsPage() {
       return;
     }
     
+    setSaving(true);
     try {
-      const examRef = await addDoc(collection(db, "exams"), {
+      let examRef;
+      const examData = {
         title,
         durationMinutes: parseInt(duration),
-        questionIds: [], 
-        createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
-      });
+      };
 
+      if (editingExamId) {
+        examRef = doc(db, "exams", editingExamId);
+        await setDoc(examRef, examData, { merge: true });
+      } else {
+        const newExamData = {
+          ...examData,
+          questionIds: [],
+          createdAt: new Date().toISOString(),
+        };
+        examRef = await addDoc(collection(db, "exams"), newExamData);
+      }
+
+      // Hapus soal lama jika sedang mengedit (opsional, tergantung strategi update)
+      // Untuk kesederhanaan, kita update/set soal berdasarkan urutan
       const questionsPromises = questions.map((q, idx) => {
-        const qRef = doc(collection(db, "exams", examRef.id, "questions"));
+        const qId = q.id || doc(collection(db, "exams", examRef.id, "questions")).id;
+        const qRef = doc(db, "exams", examRef.id, "questions", qId);
+        
         return setDoc(qRef, {
-          id: qRef.id,
+          id: qId,
           examId: examRef.id,
           questionText: q.questionText,
           options: q.options,
           correctAnswerIndex: q.correctAnswerIndex,
           difficultyLevel: q.difficultyLevel,
           imageUrl: q.imageUrl || "",
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
+          updatedAt: new Date().toISOString(),
+          createdAt: q.createdAt || new Date().toISOString()
         });
       });
 
       await Promise.all(questionsPromises);
 
-      toast({ title: "Berhasil", description: "Ujian baru telah disimpan." });
-      setTitle("");
-      setQuestions([{ questionText: "", options: ["", "", "", "", ""], correctAnswerIndex: 0, difficultyLevel: "medium", imageUrl: "" }]);
+      toast({ title: "Berhasil", description: editingExamId ? "Ujian telah diperbarui." : "Ujian baru telah disimpan." });
+      resetForm();
       setActiveTab("list");
       fetchExams();
     } catch (err) {
       console.error(err);
       toast({ variant: "destructive", title: "Error", description: "Gagal menyimpan ujian." });
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -133,25 +184,35 @@ export default function AdminExamsPage() {
               <Button variant="ghost" size="icon" onClick={() => router.push('/dashboard')}>
                 <ChevronLeft className="h-5 w-5" />
               </Button>
-              <h1 className="text-xl font-bold">Manajemen Ujian</h1>
+              <h1 className="text-xl font-bold">{editingExamId ? "Edit Ujian" : "Manajemen Ujian"}</h1>
             </div>
-            {activeTab === 'new' && (
-              <Button className="bg-primary" onClick={handleSaveExam}>
-                <Save className="h-4 w-4 mr-2" />
-                Simpan Ujian
-              </Button>
-            )}
+            <div className="flex gap-2">
+              {editingExamId && (
+                <Button variant="outline" onClick={resetForm}>
+                  Batal
+                </Button>
+              )}
+              {activeTab === 'new' && (
+                <Button className="bg-primary" onClick={handleSaveExam} disabled={saving}>
+                  <Save className="h-4 w-4 mr-2" />
+                  {saving ? "Menyimpan..." : (editingExamId ? "Perbarui" : "Simpan Ujian")}
+                </Button>
+              )}
+            </div>
           </div>
         </header>
 
         <main className="container mx-auto px-4 py-8 max-w-5xl">
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+          <Tabs value={activeTab} onValueChange={(val) => {
+            if (val === 'list') resetForm();
+            setActiveTab(val);
+          }} className="space-y-6">
             <TabsList className="grid w-full grid-cols-2 max-w-md mx-auto">
               <TabsTrigger value="list" className="flex items-center gap-2">
                 <LayoutList className="h-4 w-4" /> Daftar Ujian
               </TabsTrigger>
               <TabsTrigger value="new" className="flex items-center gap-2">
-                <FilePlus className="h-4 w-4" /> Ujian Baru
+                <FilePlus className="h-4 w-4" /> {editingExamId ? "Edit Ujian" : "Ujian Baru"}
               </TabsTrigger>
             </TabsList>
 
@@ -166,16 +227,16 @@ export default function AdminExamsPage() {
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {exams.map((exam) => (
-                    <Card key={exam.id} className="hover:shadow-md transition-shadow">
+                    <Card key={exam.id} className="hover:shadow-md transition-all">
                       <CardHeader>
                         <CardTitle className="text-lg">{exam.title}</CardTitle>
-                        <CardDescription>{exam.durationMinutes} Menit • Dibuat pada {new Date(exam.createdAt).toLocaleDateString()}</CardDescription>
+                        <CardDescription>{exam.durationMinutes} Menit • Dibuat {new Date(exam.createdAt).toLocaleDateString()}</CardDescription>
                       </CardHeader>
                       <CardFooter className="flex justify-end gap-2 border-t pt-4">
                         <Button variant="outline" size="sm" onClick={() => router.push(`/ujian/${exam.id}`)}>
                           Pratinjau
                         </Button>
-                        <Button variant="secondary" size="sm">
+                        <Button variant="secondary" size="sm" onClick={() => handleEditExam(exam)}>
                           <Pencil className="h-4 w-4 mr-1" /> Edit
                         </Button>
                       </CardFooter>
@@ -204,7 +265,7 @@ export default function AdminExamsPage() {
 
               <div className="space-y-6">
                 <div className="flex items-center justify-between">
-                  <h2 className="text-xl font-bold">Daftar Soal</h2>
+                  <h2 className="text-xl font-bold">Daftar Soal ({questions.length})</h2>
                   <Button variant="outline" size="sm" onClick={addQuestion}>
                     <Plus className="h-4 w-4 mr-2" /> Tambah Soal
                   </Button>
@@ -215,7 +276,7 @@ export default function AdminExamsPage() {
                     <div className="absolute top-0 left-0 w-1 h-full bg-primary" />
                     <CardHeader className="flex flex-row items-center justify-between">
                       <CardTitle className="text-lg">Soal #{qIdx + 1}</CardTitle>
-                      <Button variant="ghost" size="icon" className="text-destructive" onClick={() => removeQuestion(qIdx)}>
+                      <Button variant="ghost" size="icon" className="text-destructive" onClick={() => removeQuestion(qIdx)} disabled={questions.length <= 1}>
                         <Trash className="h-4 w-4" />
                       </Button>
                     </CardHeader>
@@ -237,14 +298,12 @@ export default function AdminExamsPage() {
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div className="space-y-2">
                             <Label className="text-xs">Pilih Gambar Dari Komputer</Label>
-                            <div className="flex gap-2">
-                              <Input 
-                                type="file" 
-                                accept="image/*" 
-                                onChange={(e) => handleFileUpload(qIdx, e)}
-                                className="cursor-pointer"
-                              />
-                            </div>
+                            <Input 
+                              type="file" 
+                              accept="image/*" 
+                              onChange={(e) => handleFileUpload(qIdx, e)}
+                              className="cursor-pointer"
+                            />
                           </div>
                           <div className="space-y-2">
                             <Label className="text-xs">Atau Masukkan URL (Opsional)</Label>
@@ -256,8 +315,16 @@ export default function AdminExamsPage() {
                           </div>
                         </div>
                         {q.imageUrl && (
-                          <div className="mt-4 border rounded-lg p-2 bg-white flex justify-center">
+                          <div className="mt-4 border rounded-lg p-2 bg-white flex justify-center relative group">
                             <img src={q.imageUrl} alt="Preview" className="max-h-40 object-contain rounded" />
+                            <Button 
+                              variant="destructive" 
+                              size="icon" 
+                              className="absolute top-2 right-2 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                              onClick={() => updateQuestion(qIdx, "imageUrl", "")}
+                            >
+                              <X className="h-3 w-3" />
+                            </Button>
                           </div>
                         )}
                       </div>
@@ -306,8 +373,9 @@ export default function AdminExamsPage() {
                 ))}
               </div>
               
-              <Button className="w-full h-12 text-lg bg-primary" onClick={handleSaveExam}>
-                <Save className="h-5 w-5 mr-2" /> Simpan Seluruh Ujian
+              <Button className="w-full h-12 text-lg bg-primary" onClick={handleSaveExam} disabled={saving}>
+                <Save className="h-5 w-5 mr-2" /> 
+                {saving ? "Sedang Menyimpan..." : (editingExamId ? "Perbarui Seluruh Ujian" : "Simpan Seluruh Ujian")}
               </Button>
             </TabsContent>
           </Tabs>
