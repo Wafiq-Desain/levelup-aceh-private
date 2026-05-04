@@ -54,8 +54,6 @@ export default function UjianPage() {
   const [timeLeft, setTimeLeft] = useState(3600);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const lastSavedIndex = useRef<number>(0);
-
   useEffect(() => {
     const preventDefault = (e: Event) => e.preventDefault();
     document.addEventListener("contextmenu", preventDefault);
@@ -80,9 +78,7 @@ export default function UjianPage() {
             reason: "tab_switch",
             createdAt: new Date().toISOString()
           };
-          
           addDocumentNonBlocking(warningRef, warningData);
-          
           toast({
             variant: "destructive",
             title: "Peringatan Keamanan!",
@@ -91,7 +87,6 @@ export default function UjianPage() {
         }
       }
     };
-
     document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
   }, [user, examId, toast, db]);
@@ -99,7 +94,6 @@ export default function UjianPage() {
   useEffect(() => {
     const fetchData = async () => {
       if (!examId || !user) return;
-
       try {
         const examDoc = await getDoc(doc(db, "exams", examId as string));
         if (examDoc.exists()) {
@@ -119,7 +113,6 @@ export default function UjianPage() {
           if (sessionSnap.exists()) {
             const sessionData = sessionSnap.data();
             setCurrentIndex(sessionData.currentQuestionIndex || 0);
-            lastSavedIndex.current = sessionData.currentQuestionIndex || 0;
             
             const answersRef = collection(db, "users", user.uid, "examSessions", examId as string, "examAnswers");
             const answersSnap = await getDocs(answersRef);
@@ -154,7 +147,6 @@ export default function UjianPage() {
         setLoading(false);
       }
     };
-
     fetchData();
   }, [examId, user, db]);
 
@@ -180,22 +172,17 @@ export default function UjianPage() {
       currentQuestionIndex: qIdx,
       updatedAt: new Date().toISOString() 
     });
-    lastSavedIndex.current = qIdx;
   }, [user, examId, db]);
 
   const handleSelectAnswer = (value: string) => {
     if (!user || !examId) return;
     const q = questions[currentIndex];
     const qId = q.id;
-    
-    const newAnswers = { 
-      ...answers, 
-      [qId]: { ...answers[qId], choice: value } 
-    };
+    const newAnswers = { ...answers, [qId]: { ...answers[qId], choice: value } };
     setAnswers(newAnswers);
 
     const answerRef = doc(db, "users", user.uid, "examSessions", examId as string, "examAnswers", qId);
-    const answerData = {
+    setDocumentNonBlocking(answerRef, {
       id: qId,
       examSessionId: examId,
       questionId: qId,
@@ -204,8 +191,7 @@ export default function UjianPage() {
       answerTime: new Date().toISOString(),
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
-    };
-    setDocumentNonBlocking(answerRef, answerData, { merge: true });
+    }, { merge: true });
   };
 
   const handleToggleFlag = () => {
@@ -213,18 +199,10 @@ export default function UjianPage() {
     const q = questions[currentIndex];
     const qId = q.id;
     const newFlag = !answers[qId]?.isFlagged;
-    
-    const newAnswers = { 
-      ...answers, 
-      [qId]: { ...answers[qId], isFlagged: newFlag } 
-    };
-    setAnswers(newAnswers);
+    setAnswers({ ...answers, [qId]: { ...answers[qId], isFlagged: newFlag } });
 
     const answerRef = doc(db, "users", user.uid, "examSessions", examId as string, "examAnswers", qId);
-    updateDocumentNonBlocking(answerRef, { 
-      isFlagged: newFlag, 
-      updatedAt: new Date().toISOString() 
-    });
+    updateDocumentNonBlocking(answerRef, { isFlagged: newFlag, updatedAt: new Date().toISOString() });
   };
 
   const handleNext = () => {
@@ -254,13 +232,23 @@ export default function UjianPage() {
     setIsSubmitting(true);
     
     try {
-      let correct = 0;
+      // IRT SCORING LOGIC
+      // Weights: Easy=1, Medium=3, Hard=5
+      const weights: Record<string, number> = { 'easy': 1, 'medium': 3, 'hard': 5 };
+      let totalEarnedWeight = 0;
+      let totalMaxWeight = 0;
+      let correctCount = 0;
+
       questions.forEach((q) => {
-        const qId = q.id;
-        if (answers[qId]?.choice === String.fromCharCode(65 + q.correctAnswerIndex)) {
-          correct++;
+        const weight = weights[q.difficultyLevel] || 1;
+        totalMaxWeight += weight;
+        if (answers[q.id]?.choice === String.fromCharCode(65 + q.correctAnswerIndex)) {
+          totalEarnedWeight += weight;
+          correctCount++;
         }
       });
+
+      const irtScore = totalMaxWeight > 0 ? Math.round((totalEarnedWeight / totalMaxWeight) * 100) : 0;
 
       const resultRef = doc(db, "users", user.uid, "results", examId as string);
       const resultData = {
@@ -269,10 +257,10 @@ export default function UjianPage() {
         examId: examId,
         examSessionId: examId,
         submissionTime: new Date().toISOString(),
-        totalScore: Math.round((correct / questions.length) * 100),
-        weightedScore: correct,
-        correctAnswerCount: correct,
-        incorrectAnswerCount: questions.length - correct,
+        totalScore: irtScore, // Final IRT Score
+        weightedScore: totalEarnedWeight,
+        correctAnswerCount: correctCount,
+        incorrectAnswerCount: questions.length - correctCount,
         unansweredCount: questions.length - Object.keys(answers).length,
         resultAnswerIds: [],
         antiCheatWarningCount: 0,
@@ -282,18 +270,10 @@ export default function UjianPage() {
 
       await setDocumentNonBlocking(resultRef, resultData, { merge: true });
 
-      toast({
-        title: "Ujian Selesai!",
-        description: "Jawaban Anda telah berhasil dikirim.",
-      });
-      
+      toast({ title: "Ujian Selesai!", description: "Skor IRT Anda telah berhasil dikirim." });
       router.push("/dashboard");
     } catch (err) {
-      toast({
-        variant: "destructive",
-        title: "Gagal Mengirim",
-        description: "Terjadi kesalahan saat menyimpan hasil.",
-      });
+      toast({ variant: "destructive", title: "Gagal Mengirim", description: "Terjadi kesalahan saat menyimpan hasil." });
       setIsSubmitting(false);
     }
   };
@@ -309,9 +289,7 @@ export default function UjianPage() {
         <header className="sticky top-0 z-50 bg-white border-b shadow-sm">
           <div className="container mx-auto px-4 h-20 flex items-center justify-between">
             <div className="flex flex-col">
-              <h2 className="text-xl font-bold text-primary truncate max-w-[200px] md:max-w-md">
-                {exam?.title}
-              </h2>
+              <h2 className="text-xl font-bold text-primary truncate max-w-[200px] md:max-w-md">{exam?.title}</h2>
               <div className="flex items-center gap-2 text-sm text-muted-foreground mt-1">
                 <UserIcon className="h-4 w-4" />
                 <span className="font-semibold">{user?.displayName || user?.email}</span>
@@ -341,13 +319,9 @@ export default function UjianPage() {
                 <AlertCircle className="h-16 w-16 text-destructive mx-auto" />
                 <div className="space-y-2">
                   <CardTitle className="text-2xl font-bold">PERINGATAN KERAS!</CardTitle>
-                  <p className="text-muted-foreground font-medium">
-                    Anda terdeteksi meninggalkan halaman ujian. Kejadian ini dicatat otomatis. Klik tombol di bawah untuk kembali.
-                  </p>
+                  <p className="text-muted-foreground font-medium">Anda terdeteksi meninggalkan halaman ujian. Klik tombol di bawah untuk kembali.</p>
                 </div>
-                <Button className="w-full bg-primary h-14 text-xl font-bold" onClick={() => setIsBlurred(false)}>
-                  KEMBALI KE UJIAN
-                </Button>
+                <Button className="w-full bg-primary h-14 text-xl font-bold" onClick={() => setIsBlurred(false)}>KEMBALI KE UJIAN</Button>
               </Card>
             </div>
           )}
@@ -356,10 +330,7 @@ export default function UjianPage() {
             <div className="lg:col-span-1 space-y-6">
               <Card className="shadow-lg border-t-4 border-primary">
                 <CardHeader className="pb-3 bg-muted/20">
-                  <CardTitle className="text-sm font-bold flex items-center gap-2">
-                    <BookOpen className="h-4 w-4 text-primary" />
-                    NAVIGASI SOAL
-                  </CardTitle>
+                  <CardTitle className="text-sm font-bold flex items-center gap-2"><BookOpen className="h-4 w-4 text-primary" />NAVIGASI SOAL</CardTitle>
                 </CardHeader>
                 <CardContent className="pt-6">
                   <div className="grid grid-cols-5 gap-3">
@@ -367,44 +338,19 @@ export default function UjianPage() {
                       const hasAnswer = !!answers[q.id]?.choice;
                       const isFlagged = answers[q.id]?.isFlagged;
                       const isActive = currentIndex === i;
-
                       return (
-                        <button
-                          key={i}
-                          onClick={() => {
-                            setCurrentIndex(i);
-                            saveIndex(i);
-                          }}
-                          className={cn(
-                            "h-12 rounded-lg text-sm font-black transition-all border-2 shadow-sm flex items-center justify-center relative",
-                            isActive || isFlagged
-                              ? "bg-secondary text-secondary-foreground border-secondary scale-105 ring-2 ring-secondary ring-offset-2 z-10" 
-                              : hasAnswer
-                                ? "bg-primary/10 text-primary border-primary/30"
-                                : "bg-white text-muted-foreground border-muted hover:border-primary/50"
-                          )}
-                        >
+                        <button key={i} onClick={() => { setCurrentIndex(i); saveIndex(i); }} className={cn(
+                          "h-12 rounded-lg text-sm font-black transition-all border-2 shadow-sm flex items-center justify-center relative",
+                          isActive || isFlagged ? "bg-secondary text-secondary-foreground border-secondary scale-105 ring-2 ring-secondary ring-offset-2 z-10" 
+                          : hasAnswer ? "bg-primary/10 text-primary border-primary/30" : "bg-white text-muted-foreground border-muted hover:border-primary/50"
+                        )}>
                           {i + 1}
-                          {isFlagged && (
-                            <div className="absolute -top-2 -right-2 bg-primary rounded-full p-1 shadow-md">
-                              <Flag className="h-3 w-3 fill-white text-white" />
-                            </div>
-                          )}
+                          {isFlagged && <div className="absolute -top-2 -right-2 bg-primary rounded-full p-1 shadow-md"><Flag className="h-3 w-3 fill-white text-white" /></div>}
                         </button>
                       );
                     })}
                   </div>
                 </CardContent>
-                <CardFooter className="flex flex-col gap-3 pt-0 text-xs font-semibold">
-                  <div className="flex items-center gap-2 w-full">
-                    <div className="w-4 h-4 bg-secondary rounded border shadow-sm" />
-                    <span>Aktif / Ragu-ragu</span>
-                  </div>
-                  <div className="flex items-center gap-2 w-full">
-                    <div className="w-4 h-4 bg-primary/10 rounded border border-primary/30" />
-                    <span>Sudah Terjawab</span>
-                  </div>
-                </CardFooter>
               </Card>
             </div>
 
@@ -412,77 +358,32 @@ export default function UjianPage() {
               <Card className="border-none shadow-2xl overflow-hidden min-h-[600px] flex flex-col bg-white">
                 <CardHeader className="bg-muted/5 border-b p-8">
                   <div className="flex items-center justify-between mb-6">
-                    <span className="text-xs font-black tracking-widest text-primary px-4 py-1.5 bg-primary/10 rounded-full uppercase">
-                      Soal Nomor {currentIndex + 1}
-                    </span>
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      onClick={handleToggleFlag}
-                      className={cn(
-                        "gap-2 font-bold transition-all px-6 border-2",
-                        answers[currentQuestion?.id]?.isFlagged 
-                          ? "bg-secondary text-secondary-foreground border-secondary" 
-                          : "text-muted-foreground hover:border-primary/50"
-                      )}
-                    >
+                    <span className="text-xs font-black tracking-widest text-primary px-4 py-1.5 bg-primary/10 rounded-full uppercase">Soal Nomor {currentIndex + 1}</span>
+                    <Button variant="outline" size="sm" onClick={handleToggleFlag} className={cn("gap-2 font-bold transition-all px-6 border-2", answers[currentQuestion?.id]?.isFlagged ? "bg-secondary text-secondary-foreground border-secondary" : "text-muted-foreground hover:border-primary/50")}>
                       <Flag className={cn("h-4 w-4", answers[currentQuestion?.id]?.isFlagged && "fill-current")} />
                       {answers[currentQuestion?.id]?.isFlagged ? "HAPUS TANDA" : "RAGU-RAGU"}
                     </Button>
                   </div>
-                  
                   {currentQuestion?.imageUrl && (
                     <div className="mb-6 relative w-full aspect-video md:aspect-[21/9] rounded-xl overflow-hidden border bg-muted/20">
-                      <img 
-                        src={currentQuestion.imageUrl} 
-                        alt="Visual Soal" 
-                        className="object-contain w-full h-full"
-                      />
+                      <img src={currentQuestion.imageUrl} alt="Visual Soal" className="object-contain w-full h-full" />
                     </div>
                   )}
-
-                  <div className="text-xl leading-relaxed text-foreground font-semibold">
-                    <LatexRenderer content={currentQuestion?.questionText || ""} />
-                  </div>
+                  <div className="text-xl leading-relaxed text-foreground font-semibold"><LatexRenderer content={currentQuestion?.questionText || ""} /></div>
                 </CardHeader>
                 
                 <CardContent className="flex-1 p-8 bg-muted/5">
-                  <RadioGroup 
-                    value={answers[currentQuestion?.id]?.choice || ""} 
-                    onValueChange={handleSelectAnswer}
-                    className="grid grid-cols-1 gap-5"
-                  >
+                  <RadioGroup value={answers[currentQuestion?.id]?.choice || ""} onValueChange={handleSelectAnswer} className="grid grid-cols-1 gap-5">
                     {currentQuestion?.options?.map((opt: string, i: number) => {
                       const optKey = String.fromCharCode(65 + i);
                       const isSelected = answers[currentQuestion?.id]?.choice === optKey;
-                      
                       return (
-                        <div 
-                          key={i} 
-                          className={cn(
-                            "flex items-center space-x-3 rounded-2xl border-2 p-6 transition-all hover:bg-white hover:shadow-md cursor-pointer",
-                            isSelected ? "border-primary bg-white ring-2 ring-primary/20 shadow-lg" : "border-border bg-white/50"
-                          )}
-                          onClick={() => handleSelectAnswer(optKey)}
-                        >
+                        <div key={i} className={cn("flex items-center space-x-3 rounded-2xl border-2 p-6 transition-all hover:bg-white hover:shadow-md cursor-pointer", isSelected ? "border-primary bg-white ring-2 ring-primary/20 shadow-lg" : "border-border bg-white/50")} onClick={() => handleSelectAnswer(optKey)}>
                           <RadioGroupItem value={optKey} id={`opt-${i}`} className="sr-only" />
-                          <Label 
-                            htmlFor={`opt-${i}`} 
-                            className="flex-1 cursor-pointer flex items-center gap-6 text-lg font-medium"
-                          >
-                            <span className={cn(
-                              "w-12 h-12 rounded-xl flex items-center justify-center text-lg font-black border-2 transition-all shadow-sm",
-                              isSelected ? "bg-primary text-white border-primary rotate-3" : "bg-muted/50 text-muted-foreground border-muted"
-                            )}>
-                              {optKey}
-                            </span>
-                            <div className="flex-1">
-                              <LatexRenderer content={opt} inline />
-                            </div>
+                          <Label htmlFor={`opt-${i}`} className="flex-1 cursor-pointer flex items-center gap-6 text-lg font-medium">
+                            <span className={cn("w-12 h-12 rounded-xl flex items-center justify-center text-lg font-black border-2 transition-all shadow-sm", isSelected ? "bg-primary text-white border-primary rotate-3" : "bg-muted/50 text-muted-foreground border-muted")}>{optKey}</span>
+                            <div className="flex-1"><LatexRenderer content={opt} inline /></div>
                           </Label>
-                          {isSelected && (
-                            <CheckCircle2 className="h-8 w-8 text-primary animate-in zoom-in-50" />
-                          )}
                         </div>
                       );
                     })}
@@ -490,26 +391,12 @@ export default function UjianPage() {
                 </CardContent>
 
                 <CardFooter className="p-8 border-t bg-white flex justify-between items-center">
-                  <Button 
-                    variant="ghost" 
-                    onClick={handlePrev} 
-                    disabled={currentIndex === 0}
-                    className="gap-2 h-14 text-lg font-bold px-8 hover:bg-muted"
-                  >
-                    <ChevronLeft className="h-5 w-5" /> SEBELUMNYA
-                  </Button>
-                  
-                  <div className="flex gap-4">
-                    {currentIndex < questions.length - 1 ? (
-                      <Button onClick={handleNext} className="bg-primary hover:bg-primary/90 gap-3 h-14 px-10 text-xl font-black shadow-xl transition-all active:scale-95 text-white">
-                        SIMPAN & LANJUTKAN <ChevronRight className="h-6 w-6" />
-                      </Button>
-                    ) : (
-                      <Button onClick={handleSubmit} disabled={isSubmitting} className="bg-primary hover:bg-primary/90 gap-3 h-14 px-10 text-xl font-black shadow-xl transition-all active:scale-95 text-white">
-                        {isSubmitting ? "MENGIRIM..." : "KIRIM JAWABAN"} <CheckCircle2 className="h-6 w-6" />
-                      </Button>
-                    )}
-                  </div>
+                  <Button variant="ghost" onClick={handlePrev} disabled={currentIndex === 0} className="gap-2 h-14 text-lg font-bold px-8 hover:bg-muted"><ChevronLeft className="h-5 w-5" /> SEBELUMNYA</Button>
+                  {currentIndex < questions.length - 1 ? (
+                    <Button onClick={handleNext} className="bg-primary hover:bg-primary/90 gap-3 h-14 px-10 text-xl font-black shadow-xl transition-all active:scale-95 text-white">SIMPAN & LANJUTKAN <ChevronRight className="h-6 w-6" /></Button>
+                  ) : (
+                    <Button onClick={handleSubmit} disabled={isSubmitting} className="bg-primary hover:bg-primary/90 gap-3 h-14 px-10 text-xl font-black shadow-xl transition-all active:scale-95 text-white">{isSubmitting ? "MENGIRIM..." : "KIRIM JAWABAN"} <CheckCircle2 className="h-6 w-6" /></Button>
+                  )}
                 </CardFooter>
               </Card>
             </div>

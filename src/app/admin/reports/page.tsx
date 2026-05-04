@@ -34,15 +34,13 @@ export default function AdminReportsPage() {
       setPermissionDenied(false);
       setIndexMissing(false);
       try {
-        const [usersSnap, examsSnap] = await Promise.all([
-          getDocs(collection(db, "userProfiles")),
-          getDocs(collection(db, "exams"))
-        ]);
-
+        // Fetch all profiles to map display names
+        const usersSnap = await getDocs(collection(db, "userProfiles"));
         const uMap: Record<string, any> = {};
         usersSnap.forEach(doc => uMap[doc.id] = doc.data());
         setUsersMap(uMap);
 
+        const examsSnap = await getDocs(collection(db, "exams"));
         const eMap: Record<string, any> = {};
         examsSnap.forEach(doc => eMap[doc.id] = doc.data());
         setExamsMap(eMap);
@@ -190,7 +188,7 @@ export default function AdminReportsPage() {
                             <TableHead className="font-bold">Siswa</TableHead>
                             <TableHead className="font-bold">Paket Ujian</TableHead>
                             <TableHead className="font-bold">Waktu Submit</TableHead>
-                            <TableHead className="text-center font-bold">Skor</TableHead>
+                            <TableHead className="text-center font-bold">Skor Akhir</TableHead>
                             <TableHead className="text-center font-bold">Statistik</TableHead>
                           </TableRow>
                         </TableHeader>
@@ -234,8 +232,6 @@ export default function AdminReportsPage() {
                                     <span className="text-green-700 font-bold" title="Benar">{res.correctAnswerCount}B</span>
                                     <span className="w-px h-3 bg-muted-foreground/30"></span>
                                     <span className="text-red-700 font-bold" title="Salah">{res.incorrectAnswerCount}S</span>
-                                    <span className="w-px h-3 bg-muted-foreground/30"></span>
-                                    <span className="text-gray-600" title="Kosong">{res.unansweredCount || 0}K</span>
                                   </div>
                                 </TableCell>
                               </TableRow>

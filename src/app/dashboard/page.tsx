@@ -6,11 +6,11 @@ import { useAppAuth } from "@/contexts/auth-context";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent, CardDescription, CardFooter } from "@/components/ui/card";
 import { useRouter } from "next/navigation";
-import { BookOpen, LogOut, Settings, Award, User, ListChecks, LayoutDashboard, ShieldCheck } from "lucide-react";
+import { BookOpen, LogOut, Settings, Award, User, ListChecks, LayoutDashboard, ShieldCheck, TrendingUp, CheckCircle } from "lucide-react";
 import { useAuth, useFirestore } from "@/firebase";
 import { signOut } from "firebase/auth";
 import { useEffect, useState } from "react";
-import { collection, query, getDocs } from "firebase/firestore";
+import { collection, query, getDocs, orderBy } from "firebase/firestore";
 
 export default function DashboardPage() {
   const { user, role } = useAppAuth();
@@ -18,27 +18,42 @@ export default function DashboardPage() {
   const auth = useAuth();
   const db = useFirestore();
   const [exams, setExams] = useState<any[]>([]);
+  const [userResults, setUserResults] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const fetchExams = async () => {
+    const fetchDashboardData = async () => {
+      if (!user) return;
       try {
-        const q = query(collection(db, "exams"));
-        const querySnapshot = await getDocs(q);
-        setExams(querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        setLoading(true);
+        // Fetch Exams
+        const qExams = query(collection(db, "exams"));
+        const examsSnapshot = await getDocs(qExams);
+        setExams(examsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+
+        // Fetch User Results for Stats
+        const qResults = query(collection(db, "users", user.uid, "results"), orderBy("submissionTime", "desc"));
+        const resultsSnapshot = await getDocs(qResults);
+        setUserResults(resultsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
       } catch (err) {
-        console.error("Error fetching exams:", err);
+        console.error("Error fetching dashboard data:", err);
       } finally {
         setLoading(false);
       }
     };
-    fetchExams();
-  }, [db]);
+    fetchDashboardData();
+  }, [db, user]);
 
   const handleSignOut = async () => {
     await signOut(auth);
     router.push("/login");
   };
+
+  // Calculate Stats
+  const completedExams = userResults.length;
+  const averageScore = userResults.length > 0 
+    ? Math.round(userResults.reduce((acc, curr) => acc + (curr.totalScore || 0), 0) / userResults.length)
+    : 0;
 
   return (
     <ProtectedRoute>
@@ -126,32 +141,39 @@ export default function DashboardPage() {
                   </div>
                 ) : exams.length > 0 ? (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                    {exams.map((exam) => (
-                      <Card key={exam.id} className="hover:shadow-xl transition-all group border-t-4 border-primary/20 hover:border-primary">
-                        <CardHeader className="pb-2">
-                          <div className="flex justify-between items-start">
-                            <CardTitle className="text-xl group-hover:text-primary transition-colors">
-                              {exam.title || "Judul Ujian"}
-                            </CardTitle>
-                          </div>
-                          <CardDescription className="flex items-center gap-2 mt-1">
-                            <span className="bg-muted px-2 py-0.5 rounded text-xs font-semibold">
-                              {exam.durationMinutes || 60} menit
-                            </span>
-                            <span className="text-xs">•</span>
-                            <span className="text-xs capitalize">{exam.difficulty_level || 'General'}</span>
-                          </CardDescription>
-                        </CardHeader>
-                        <CardContent className="pt-4">
-                          <Button 
-                            className="w-full bg-primary hover:bg-primary/90 shadow-md group-hover:shadow-lg transition-all"
-                            onClick={() => router.push(`/ujian/${exam.id}`)}
-                          >
-                            Mulai Sekarang
-                          </Button>
-                        </CardContent>
-                      </Card>
-                    ))}
+                    {exams.map((exam) => {
+                      const isFinished = userResults.some(r => r.examId === exam.id);
+                      return (
+                        <Card key={exam.id} className="hover:shadow-xl transition-all group border-t-4 border-primary/20 hover:border-primary">
+                          <CardHeader className="pb-2">
+                            <div className="flex justify-between items-start">
+                              <CardTitle className="text-xl group-hover:text-primary transition-colors">
+                                {exam.title || "Judul Ujian"}
+                              </CardTitle>
+                              {isFinished && (
+                                <CheckCircle className="h-5 w-5 text-green-500" />
+                              )}
+                            </div>
+                            <CardDescription className="flex items-center gap-2 mt-1">
+                              <span className="bg-muted px-2 py-0.5 rounded text-xs font-semibold">
+                                {exam.durationMinutes || 60} menit
+                              </span>
+                              <span className="text-xs">•</span>
+                              <span className="text-xs capitalize">{exam.questionIds?.length || 0} Soal</span>
+                            </CardDescription>
+                          </CardHeader>
+                          <CardContent className="pt-4">
+                            <Button 
+                              variant={isFinished ? "outline" : "default"}
+                              className={`w-full ${!isFinished ? "bg-primary hover:bg-primary/90 shadow-md group-hover:shadow-lg" : ""} transition-all`}
+                              onClick={() => router.push(`/ujian/${exam.id}`)}
+                            >
+                              {isFinished ? "Ulangi Ujian" : "Mulai Sekarang"}
+                            </Button>
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
                   </div>
                 ) : (
                   <Card className="border-dashed border-2 py-12 text-center bg-white/50">
@@ -177,21 +199,23 @@ export default function DashboardPage() {
                       <div className="h-2 w-2 rounded-full bg-green-500" />
                       <span className="text-sm font-medium">Ujian Selesai</span>
                     </div>
-                    <span className="font-bold text-lg text-primary">0</span>
+                    <span className="font-bold text-lg text-primary">{completedExams}</span>
                   </div>
                   <div className="flex justify-between items-center py-3 border-b border-muted/50">
                     <div className="flex items-center gap-2">
                       <div className="h-2 w-2 rounded-full bg-blue-500" />
                       <span className="text-sm font-medium">Rata-rata Skor</span>
                     </div>
-                    <span className="font-bold text-lg text-primary">0%</span>
+                    <span className="font-bold text-lg text-primary">{averageScore}%</span>
                   </div>
                   <div className="flex justify-between items-center py-3">
                     <div className="flex items-center gap-2">
                       <div className="h-2 w-2 rounded-full bg-secondary" />
-                      <span className="text-sm font-medium">Peringkat</span>
+                      <span className="text-sm font-medium">Peringkat Anda</span>
                     </div>
-                    <span className="font-bold text-secondary-foreground text-lg">--</span>
+                    <span className="font-bold text-secondary-foreground text-lg">
+                      {completedExams > 0 ? "Bagus!" : "--"}
+                    </span>
                   </div>
                 </CardContent>
               </Card>
@@ -205,7 +229,7 @@ export default function DashboardPage() {
                 </CardHeader>
                 <CardContent className="relative z-10 pt-0">
                   <p className="text-sm opacity-90 leading-relaxed">
-                    Pastikan koneksi internet stabil sebelum memulai ujian. Sistem anti-cheat kami akan otomatis mencatat aktivitas tab-switching.
+                    Sistem penilaian kini menggunakan standar IRT. Bobot nilai setiap soal berbeda tergantung tingkat kesulitannya. Pastikan Anda menjawab soal yang Anda kuasai terlebih dahulu.
                   </p>
                 </CardContent>
                 <div className="absolute -bottom-6 -right-6 p-4 opacity-10">
