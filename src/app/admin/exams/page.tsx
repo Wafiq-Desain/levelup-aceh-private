@@ -29,7 +29,7 @@ export default function AdminExamsPage() {
   const [title, setTitle] = useState("");
   const [duration, setDuration] = useState("60");
   const [questions, setQuestions] = useState<any[]>([
-    { questionText: "", options: ["", "", "", ""], correctAnswerIndex: 0, difficultyLevel: "medium", imageUrl: "" }
+    { questionText: "", options: ["", "", "", "", ""], correctAnswerIndex: 0, difficultyLevel: "medium", imageUrl: "" }
   ]);
 
   useEffect(() => {
@@ -51,7 +51,7 @@ export default function AdminExamsPage() {
   };
 
   const addQuestion = () => {
-    setQuestions([...questions, { questionText: "", options: ["", "", "", ""], correctAnswerIndex: 0, difficultyLevel: "medium", imageUrl: "" }]);
+    setQuestions([...questions, { questionText: "", options: ["", "", "", "", ""], correctAnswerIndex: 0, difficultyLevel: "medium", imageUrl: "" }]);
   };
 
   const removeQuestion = (index: number) => {
@@ -115,7 +115,7 @@ export default function AdminExamsPage() {
 
       toast({ title: "Berhasil", description: "Ujian baru telah disimpan." });
       setTitle("");
-      setQuestions([{ questionText: "", options: ["", "", "", ""], correctAnswerIndex: 0, difficultyLevel: "medium", imageUrl: "" }]);
+      setQuestions([{ questionText: "", options: ["", "", "", "", ""], correctAnswerIndex: 0, difficultyLevel: "medium", imageUrl: "" }]);
       setActiveTab("list");
       fetchExams();
     } catch (err) {
@@ -283,6 +283,7 @@ export default function AdminExamsPage() {
                               <SelectItem value="1">Opsi B</SelectItem>
                               <SelectItem value="2">Opsi C</SelectItem>
                               <SelectItem value="3">Opsi D</SelectItem>
+                              <SelectItem value="4">Opsi E</SelectItem>
                             </SelectContent>
                           </Select>
                         </div>
