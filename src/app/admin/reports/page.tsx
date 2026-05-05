@@ -17,7 +17,8 @@ import {
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useFirestore } from "@/firebase";
-import { collection, collectionGroup, getDocs, query, orderBy, doc, deleteDoc } from "firebase/firestore";
+import { collection, collectionGroup, getDocs, query, orderBy, doc } from "firebase/firestore";
+import { deleteDocumentNonBlocking } from "@/firebase/non-blocking-updates";
 import { errorEmitter } from "@/firebase/error-emitter";
 import { FirestorePermissionError } from "@/firebase/errors";
 import { useRouter } from "next/navigation";
@@ -66,16 +67,17 @@ export default function AdminReportsPage() {
       const resultsList = resultsSnap.docs.map(d => {
         const data = d.data();
         const path = d.ref.path;
-        const pathParts = path.split('/');
-        // Path is users/{userId}/results/{resultId}
-        // So userId is at index 1
+        const pathParts = path.split('/').filter(Boolean);
+        
+        // Path structure: users/{userId}/results/{resultId}
+        // index 0: users, index 1: userId, index 2: results, index 3: resultId
         const studentIdFromPath = pathParts[1];
         
         return { 
           id: d.id, 
           ...data,
-          // Prioritize studentId from field, fallback to path extraction
-          studentId: data.studentId || studentIdFromPath,
+          // Priority: use path-based ID to ensure we match userProfiles documents
+          studentId: studentIdFromPath || data.studentId,
           fullPath: path 
         };
       });
@@ -102,33 +104,29 @@ export default function AdminReportsPage() {
     fetchData();
   }, [db]);
 
-  const handleDeleteResult = async (result: any) => {
-    const studentName = usersMap[result.studentId]?.displayName || 'siswa';
+  const handleDeleteResult = (res: any) => {
+    const student = usersMap[res.studentId];
+    const studentName = student?.displayName || 'Siswa';
+    
     if (!confirm(`Apakah Anda yakin ingin menghapus nilai ${studentName}? Tindakan ini permanen.`)) {
       return;
     }
 
-    try {
-      const resultRef = doc(db, result.fullPath);
-      await deleteDoc(resultRef);
-      setResults(results.filter(r => r.fullPath !== result.fullPath));
-      toast({
-        title: "Dihapus",
-        description: `Hasil ujian ${studentName} telah berhasil dihapus.`
-      });
-    } catch (err: any) {
-      console.error("Delete error:", err);
-      toast({
-        variant: "destructive",
-        title: "Gagal Menghapus",
-        description: "Terjadi kesalahan saat mencoba menghapus data."
-      });
-    }
+    // Optimistic update
+    setResults(prev => prev.filter(r => r.fullPath !== res.fullPath));
+
+    const resultRef = doc(db, res.fullPath);
+    deleteDocumentNonBlocking(resultRef);
+    
+    toast({
+      title: "Berhasil",
+      description: `Hasil ujian ${studentName} telah dihapus.`
+    });
   };
 
   const filteredResults = results.filter(res => {
     const student = usersMap[res.studentId];
-    const studentName = (student?.displayName || student?.email || "Unknown").toLowerCase();
+    const studentName = (student?.displayName || student?.email || "Siswa").toLowerCase();
     const exam = examsMap[res.examId];
     const examTitle = (exam?.title || "Unknown Exam").toLowerCase();
     const searchString = `${studentName} ${examTitle}`;
@@ -147,7 +145,7 @@ export default function AdminReportsPage() {
               <h1 className="text-xl font-bold text-primary">Analitik & Hasil Ujian</h1>
             </div>
             <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={fetchData} className="hidden sm:flex">
+              <Button variant="outline" size="sm" onClick={fetchData}>
                 Refresh Data
               </Button>
               <Button variant="outline" size="sm" onClick={() => window.print()} className="hidden sm:flex" disabled={permissionDenied || indexMissing}>
