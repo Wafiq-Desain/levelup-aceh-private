@@ -6,11 +6,11 @@ import { useAppAuth } from "@/contexts/auth-context";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent, CardDescription, CardFooter } from "@/components/ui/card";
 import { useRouter } from "next/navigation";
-import { BookOpen, LogOut, Settings, Award, User, ListChecks, LayoutDashboard, ShieldCheck, TrendingUp, CheckCircle } from "lucide-react";
+import { BookOpen, LogOut, Settings, Award, User, ListChecks, LayoutDashboard, ShieldCheck, TrendingUp, CheckCircle, AlertCircle } from "lucide-react";
 import { useAuth, useFirestore } from "@/firebase";
 import { signOut } from "firebase/auth";
 import { useEffect, useState } from "react";
-import { collection, query, getDocs, orderBy } from "firebase/firestore";
+import { collection, query, getDocs, orderBy, where } from "firebase/firestore";
 
 export default function DashboardPage() {
   const { user, role } = useAppAuth();
@@ -31,7 +31,7 @@ export default function DashboardPage() {
         const examsSnapshot = await getDocs(qExams);
         setExams(examsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
 
-        // Fetch User Results for Stats
+        // Fetch User Results
         const qResults = query(collection(db, "users", user.uid, "results"), orderBy("submissionTime", "desc"));
         const resultsSnapshot = await getDocs(qResults);
         setUserResults(resultsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
@@ -47,6 +47,10 @@ export default function DashboardPage() {
   const handleSignOut = async () => {
     await signOut(auth);
     router.push("/login");
+  };
+
+  const getAttemptCount = (examId: string) => {
+    return userResults.filter(r => r.examId === examId).length;
   };
 
   // Calculate Stats
@@ -142,33 +146,44 @@ export default function DashboardPage() {
                 ) : exams.length > 0 ? (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                     {exams.map((exam) => {
-                      const isFinished = userResults.some(r => r.examId === exam.id);
+                      const attempts = getAttemptCount(exam.id);
+                      const isLimitReached = attempts >= 3;
+                      const hasFinishedOnce = attempts > 0;
+
                       return (
-                        <Card key={exam.id} className="hover:shadow-xl transition-all group border-t-4 border-primary/20 hover:border-primary">
+                        <Card key={exam.id} className={`hover:shadow-xl transition-all group border-t-4 ${isLimitReached ? 'border-destructive/20 opacity-80' : 'border-primary/20 hover:border-primary'}`}>
                           <CardHeader className="pb-2">
                             <div className="flex justify-between items-start">
-                              <CardTitle className="text-xl group-hover:text-primary transition-colors">
+                              <CardTitle className={`text-xl transition-colors ${isLimitReached ? 'text-muted-foreground' : 'group-hover:text-primary'}`}>
                                 {exam.title || "Judul Ujian"}
                               </CardTitle>
-                              {isFinished && (
+                              {isLimitReached ? (
+                                <AlertCircle className="h-5 w-5 text-destructive" />
+                              ) : hasFinishedOnce ? (
                                 <CheckCircle className="h-5 w-5 text-green-500" />
-                              )}
+                              ) : null}
                             </div>
-                            <CardDescription className="flex items-center gap-2 mt-1">
-                              <span className="bg-muted px-2 py-0.5 rounded text-xs font-semibold">
-                                {exam.durationMinutes || 60} menit
-                              </span>
-                              <span className="text-xs">•</span>
-                              <span className="text-xs capitalize">{exam.questionIds?.length || 0} Soal</span>
+                            <CardDescription className="flex flex-col gap-1 mt-1">
+                              <div className="flex items-center gap-2">
+                                <span className="bg-muted px-2 py-0.5 rounded text-xs font-semibold">
+                                  {exam.durationMinutes || 60} menit
+                                </span>
+                                <span className="text-xs">•</span>
+                                <span className="text-xs capitalize">{exam.questionIds?.length || 0} Soal</span>
+                              </div>
+                              <div className={`text-[11px] font-bold ${isLimitReached ? 'text-destructive' : 'text-primary'}`}>
+                                Percobaan: {attempts}/3 {isLimitReached && "(Batas Tercapai)"}
+                              </div>
                             </CardDescription>
                           </CardHeader>
                           <CardContent className="pt-4">
                             <Button 
-                              variant={isFinished ? "outline" : "default"}
-                              className={`w-full ${!isFinished ? "bg-primary hover:bg-primary/90 shadow-md group-hover:shadow-lg" : ""} transition-all`}
-                              onClick={() => router.push(`/ujian/${exam.id}`)}
+                              variant={isLimitReached ? "secondary" : (hasFinishedOnce ? "outline" : "default")}
+                              className={`w-full ${!isLimitReached && !hasFinishedOnce ? "bg-primary hover:bg-primary/90 shadow-md group-hover:shadow-lg" : ""} transition-all`}
+                              onClick={() => !isLimitReached && router.push(`/ujian/${exam.id}`)}
+                              disabled={isLimitReached}
                             >
-                              {isFinished ? "Ulangi Ujian" : "Mulai Sekarang"}
+                              {isLimitReached ? "Batas Percobaan Habis" : (hasFinishedOnce ? "Ulangi Ujian" : "Mulai Sekarang")}
                             </Button>
                           </CardContent>
                         </Card>
@@ -208,15 +223,6 @@ export default function DashboardPage() {
                     </div>
                     <span className="font-bold text-lg text-primary">{averageScore}%</span>
                   </div>
-                  <div className="flex justify-between items-center py-3">
-                    <div className="flex items-center gap-2">
-                      <div className="h-2 w-2 rounded-full bg-secondary" />
-                      <span className="text-sm font-medium">Peringkat Anda</span>
-                    </div>
-                    <span className="font-bold text-secondary-foreground text-lg">
-                      {completedExams > 0 ? "Bagus!" : "--"}
-                    </span>
-                  </div>
                 </CardContent>
               </Card>
 
@@ -229,7 +235,7 @@ export default function DashboardPage() {
                 </CardHeader>
                 <CardContent className="relative z-10 pt-0">
                   <p className="text-sm opacity-90 leading-relaxed">
-                    Sistem penilaian kini menggunakan standar IRT. Bobot nilai setiap soal berbeda tergantung tingkat kesulitannya. Pastikan Anda menjawab soal yang Anda kuasai terlebih dahulu.
+                    Setiap paket ujian memiliki batas 3 kali percobaan. Jika Anda terdeteksi melakukan kecurangan seperti berpindah tab sebanyak 3 kali, sistem akan otomatis mengeluarkan Anda dan kuota percobaan akan berkurang.
                   </p>
                 </CardContent>
                 <div className="absolute -bottom-6 -right-6 p-4 opacity-10">

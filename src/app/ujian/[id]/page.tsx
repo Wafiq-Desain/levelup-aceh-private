@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ProtectedRoute } from "@/components/auth/Protected-route";
 import { useAppAuth } from "@/contexts/auth-context";
@@ -12,7 +12,8 @@ import {
   getDocs,
   query,
   orderBy,
-  increment
+  increment,
+  where
 } from "firebase/firestore";
 import { useFirestore } from "@/firebase";
 import { 
@@ -33,10 +34,11 @@ import {
   CheckCircle2, 
   Flag,
   BookOpen,
-  ShieldAlert
+  ShieldAlert,
+  AlertTriangle
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { cn } from "@/lib/utils";
+import { cn } from "@/utils/cn";
 
 export default function UjianPage() {
   const { id: examId } = useParams();
@@ -54,61 +56,156 @@ export default function UjianPage() {
   const [timeLeft, setTimeLeft] = useState(3600);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [warningCount, setWarningCount] = useState(0);
+  const [attemptLimitReached, setAttemptLimitReached] = useState(false);
+  
+  // Ref to prevent multiple submissions
+  const hasSubmitted = useRef(false);
 
-  // Security: Prevent Right Click and Selection
+  // Security: Prevent Right Click, Selection, and Refresh
   useEffect(() => {
     const preventDefault = (e: Event) => e.preventDefault();
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (!hasSubmitted.current) {
+        e.preventDefault();
+        e.returnValue = "Ujian sedang berlangsung. Jika Anda keluar, hasil akan dikirim otomatis.";
+      }
+    };
+
     document.addEventListener("contextmenu", preventDefault);
     document.addEventListener("selectstart", preventDefault);
+    window.addEventListener("beforeunload", handleBeforeUnload);
     document.body.classList.add("no-select");
 
     return () => {
       document.removeEventListener("contextmenu", preventDefault);
       document.removeEventListener("selectstart", preventDefault);
+      window.removeEventListener("beforeunload", handleBeforeUnload);
       document.body.classList.remove("no-select");
     };
   }, []);
 
+  const handleSubmit = useCallback(async (isAuto = false) => {
+    if (!user || !examId || hasSubmitted.current) return;
+    hasSubmitted.current = true;
+    setIsSubmitting(true);
+    
+    try {
+      const weights: Record<string, number> = { 'easy': 1, 'medium': 3, 'hard': 5 };
+      let totalEarnedWeight = 0;
+      let totalMaxWeight = 0;
+      let correctCount = 0;
+      let answeredCount = 0;
+
+      questions.forEach((q) => {
+        const weight = weights[q.difficultyLevel] || 1;
+        totalMaxWeight += weight;
+        const studentAnswer = answers[q.id]?.choice;
+        
+        if (studentAnswer) {
+          answeredCount++;
+          if (studentAnswer === String.fromCharCode(65 + q.correctAnswerIndex)) {
+            totalEarnedWeight += weight;
+            correctCount++;
+          }
+        }
+      });
+
+      const irtScore = totalMaxWeight > 0 ? Math.round((totalEarnedWeight / totalMaxWeight) * 100) : 0;
+
+      // Unique result ID for each attempt (using timestamp to allow multiple results per examId)
+      const attemptTimestamp = new Date().getTime();
+      const resultRef = doc(db, "users", user.uid, "results", `${examId}_${attemptTimestamp}`);
+      
+      const resultData = {
+        id: `${examId}_${attemptTimestamp}`,
+        studentId: user.uid,
+        examId: examId,
+        examSessionId: examId,
+        submissionTime: new Date().toISOString(),
+        totalScore: irtScore,
+        weightedScore: totalEarnedWeight,
+        correctAnswerCount: correctCount,
+        incorrectAnswerCount: answeredCount - correctCount,
+        unansweredCount: Math.max(0, questions.length - answeredCount),
+        antiCheatWarningCount: warningCount,
+        isAutoSubmitted: isAuto,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+
+      setDocumentNonBlocking(resultRef, resultData, { merge: true });
+
+      toast({ 
+        title: isAuto ? "Ujian Dihentikan Paksa!" : "Ujian Selesai!", 
+        description: isAuto ? "Anda terdeteksi melakukan kecurangan berulang." : "Skor Anda telah berhasil dikirim.",
+        variant: isAuto ? "destructive" : "default"
+      });
+      
+      setTimeout(() => {
+        router.push("/dashboard");
+      }, 1500);
+    } catch (err) {
+      console.error("Submit error:", err);
+      setIsSubmitting(false);
+      hasSubmitted.current = false;
+    }
+  }, [user, examId, questions, answers, warningCount, db, router, toast]);
+
   // Anti-Cheat: Tab Switching Detection
   useEffect(() => {
     const handleVisibilityChange = () => {
-      if (document.hidden) {
+      if (document.hidden && !hasSubmitted.current) {
         setIsBlurred(true);
+        const newWarningCount = warningCount + 1;
+        setWarningCount(newWarningCount);
+        
         if (user && examId) {
-          const newWarningCount = warningCount + 1;
-          setWarningCount(newWarningCount);
-          
           const warningRef = collection(db, "users", user.uid, "examSessions", examId as string, "antiCheatWarnings");
-          const warningData = {
+          addDocumentNonBlocking(warningRef, {
             timestamp: new Date().toISOString(),
             reason: "tab_switch",
             createdAt: new Date().toISOString()
-          };
-          addDocumentNonBlocking(warningRef, warningData);
+          });
           
-          // Also update warning count in session
           const sessionRef = doc(db, "users", user.uid, "examSessions", examId as string);
           updateDocumentNonBlocking(sessionRef, { 
             antiCheatWarningCount: increment(1),
             updatedAt: new Date().toISOString() 
           });
+        }
 
+        // Sanksi: Jika peringatan mencapai 3, paksa submit
+        if (newWarningCount >= 3) {
+          handleSubmit(true);
+        } else {
           toast({
             variant: "destructive",
             title: "Peringatan Keamanan!",
-            description: "Pindah tab terdeteksi. Pelanggaran Anda telah dicatat.",
+            description: `Pindah tab terdeteksi (${newWarningCount}/3). Pada peringatan ke-3, ujian akan dihentikan paksa!`,
           });
         }
       }
     };
     document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
-  }, [user, examId, toast, db, warningCount]);
+  }, [user, examId, toast, db, warningCount, handleSubmit]);
 
   useEffect(() => {
     const fetchData = async () => {
       if (!examId || !user) return;
       try {
+        setLoading(true);
+
+        // Check for 3 attempt limit
+        const resultsRef = collection(db, "users", user.uid, "results");
+        const resultsQuery = query(resultsRef, where("examId", "==", examId));
+        const resultsSnap = await getDocs(resultsQuery);
+        if (resultsSnap.size >= 3) {
+          setAttemptLimitReached(true);
+          setLoading(false);
+          return;
+        }
+
         const examDoc = await getDoc(doc(db, "exams", examId as string));
         if (examDoc.exists()) {
           const examData = examDoc.data();
@@ -118,7 +215,6 @@ export default function UjianPage() {
           const qSnap = await getDocs(query(questionsRef, orderBy("createdAt", "asc")));
           const qList = qSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
           
-          // CRITICAL: Filter questions based on the questionIds array in the exam document
           let orderedQuestions = [];
           if (examData.questionIds && examData.questionIds.length > 0) {
             orderedQuestions = examData.questionIds.map((qId: string) => 
@@ -151,20 +247,17 @@ export default function UjianPage() {
             });
             setAnswers(loadedAnswers);
           } else {
-            const initialSession = {
+            setDocumentNonBlocking(sessionRef, {
               id: examId,
               studentId: user.uid,
               examId: examId,
               startTime: new Date().toISOString(),
               currentQuestionIndex: 0,
-              examAnswerIds: [],
-              antiCheatWarningIds: [],
               antiCheatWarningCount: 0,
               isCompleted: false,
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString()
-            };
-            setDocumentNonBlocking(sessionRef, initialSession, { merge: true });
+            }, { merge: true });
           }
         }
       } catch (err) {
@@ -177,7 +270,7 @@ export default function UjianPage() {
   }, [examId, user, db]);
 
   useEffect(() => {
-    if (loading || isSubmitting) return;
+    if (loading || isSubmitting || attemptLimitReached) return;
     const timer = setInterval(() => {
       setTimeLeft((prev) => {
         if (prev <= 1) {
@@ -189,16 +282,7 @@ export default function UjianPage() {
       });
     }, 1000);
     return () => clearInterval(timer);
-  }, [loading, isSubmitting]);
-
-  const saveIndex = useCallback((qIdx: number) => {
-    if (!user || !examId) return;
-    const sessionRef = doc(db, "users", user.uid, "examSessions", examId as string);
-    updateDocumentNonBlocking(sessionRef, { 
-      currentQuestionIndex: qIdx,
-      updatedAt: new Date().toISOString() 
-    });
-  }, [user, examId, db]);
+  }, [loading, isSubmitting, attemptLimitReached, handleSubmit]);
 
   const handleSelectAnswer = (value: string) => {
     if (!user || !examId) return;
@@ -231,87 +315,30 @@ export default function UjianPage() {
     updateDocumentNonBlocking(answerRef, { isFlagged: newFlag, updatedAt: new Date().toISOString() });
   };
 
-  const handleNext = () => {
-    if (currentIndex < questions.length - 1) {
-      const nextIdx = currentIndex + 1;
-      setCurrentIndex(nextIdx);
-      saveIndex(nextIdx);
-    }
-  };
-
-  const handlePrev = () => {
-    if (currentIndex > 0) {
-      const prevIdx = currentIndex - 1;
-      setCurrentIndex(prevIdx);
-      saveIndex(prevIdx);
-    }
-  };
-
   const formatTime = (seconds: number) => {
     const m = Math.floor(seconds / 60);
     const s = seconds % 60;
     return `${m}:${s.toString().padStart(2, '0')}`;
   };
 
-  const handleSubmit = async () => {
-    if (!user || !examId || isSubmitting) return;
-    setIsSubmitting(true);
-    
-    try {
-      const weights: Record<string, number> = { 'easy': 1, 'medium': 3, 'hard': 5 };
-      let totalEarnedWeight = 0;
-      let totalMaxWeight = 0;
-      let correctCount = 0;
-      let answeredCount = 0;
-
-      questions.forEach((q) => {
-        const weight = weights[q.difficultyLevel] || 1;
-        totalMaxWeight += weight;
-        const studentAnswer = answers[q.id]?.choice;
-        
-        if (studentAnswer) {
-          answeredCount++;
-          if (studentAnswer === String.fromCharCode(65 + q.correctAnswerIndex)) {
-            totalEarnedWeight += weight;
-            correctCount++;
-          }
-        }
-      });
-
-      const irtScore = totalMaxWeight > 0 ? Math.round((totalEarnedWeight / totalMaxWeight) * 100) : 0;
-
-      const resultRef = doc(db, "users", user.uid, "results", examId as string);
-      const resultData = {
-        id: examId,
-        studentId: user.uid,
-        examId: examId,
-        examSessionId: examId,
-        submissionTime: new Date().toISOString(),
-        totalScore: irtScore,
-        weightedScore: totalEarnedWeight,
-        correctAnswerCount: correctCount,
-        incorrectAnswerCount: answeredCount - correctCount,
-        unansweredCount: questions.length - answeredCount,
-        antiCheatWarningCount: warningCount,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      };
-
-      setDocumentNonBlocking(resultRef, resultData, { merge: true });
-
-      toast({ title: "Ujian Selesai!", description: "Skor Anda telah berhasil dikirim." });
-      
-      // Delay redirect slightly to ensure Firestore operation starts
-      setTimeout(() => {
-        router.push("/dashboard");
-      }, 1000);
-    } catch (err) {
-      toast({ variant: "destructive", title: "Gagal Mengirim", description: "Terjadi kesalahan saat menyimpan hasil." });
-      setIsSubmitting(false);
-    }
-  };
-
   if (loading) return <div className="flex h-screen items-center justify-center"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div></div>;
+
+  if (attemptLimitReached) {
+    return (
+      <ProtectedRoute>
+        <div className="flex h-screen items-center justify-center p-4 bg-muted/20">
+          <Card className="max-w-md w-full text-center p-8 space-y-6 shadow-xl border-t-8 border-destructive">
+            <AlertTriangle className="h-16 w-16 text-destructive mx-auto" />
+            <div className="space-y-2">
+              <CardTitle className="text-2xl font-bold">Batas Percobaan Habis</CardTitle>
+              <p className="text-muted-foreground">Anda telah mencapai batas maksimal 3 kali percobaan untuk ujian ini. Silakan hubungi admin jika ada kendala.</p>
+            </div>
+            <Button className="w-full h-12 font-bold" onClick={() => router.push('/dashboard')}>Kembali ke Dashboard</Button>
+          </Card>
+        </div>
+      </ProtectedRoute>
+    );
+  }
 
   const currentQuestion = questions[currentIndex];
   const progressPercent = questions.length > 0 ? ((currentIndex + 1) / questions.length) * 100 : 0;
@@ -325,7 +352,7 @@ export default function UjianPage() {
               <h2 className="text-xl font-bold text-primary truncate max-w-[200px] md:max-w-md">{exam?.title}</h2>
               <div className="flex items-center gap-2 text-sm text-muted-foreground mt-1">
                 <ShieldAlert className={cn("h-4 w-4", warningCount > 0 ? "text-destructive" : "text-green-500")} />
-                <span className="font-semibold">Pelanggaran: {warningCount}</span>
+                <span className="font-semibold">Pelanggaran: {warningCount}/3</span>
               </div>
             </div>
             
@@ -337,7 +364,7 @@ export default function UjianPage() {
                 <Clock className="h-6 w-6" />
                 {formatTime(timeLeft)}
               </div>
-              <Button variant="destructive" size="lg" onClick={handleSubmit} disabled={isSubmitting} className="font-bold px-8 bg-primary hover:bg-primary/90">
+              <Button variant="destructive" size="lg" onClick={() => handleSubmit()} disabled={isSubmitting} className="font-bold px-8 bg-primary hover:bg-primary/90">
                 SELESAI
               </Button>
             </div>
@@ -346,15 +373,15 @@ export default function UjianPage() {
         </header>
 
         <main className="container mx-auto px-4 py-8">
-          {isBlurred && (
+          {isBlurred && !hasSubmitted.current && (
             <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-md pointer-events-auto">
               <Card className="max-w-md text-center p-10 space-y-6 shadow-2xl border-t-8 border-destructive">
                 <ShieldAlert className="h-20 w-20 text-destructive mx-auto animate-bounce" />
                 <div className="space-y-2">
                   <CardTitle className="text-3xl font-black text-destructive">DETEKSI PELANGGARAN!</CardTitle>
-                  <p className="text-muted-foreground text-lg font-medium">Anda terdeteksi meninggalkan halaman ujian atau mencoba melakukan screenshot. Aktivitas ini telah dicatat oleh sistem admin.</p>
+                  <p className="text-muted-foreground text-lg font-medium">Anda terdeteksi meninggalkan halaman ujian. Pelanggaran ke-3 akan mengakibatkan ujian dihentikan otomatis.</p>
                 </div>
-                <Button className="w-full bg-primary h-16 text-2xl font-bold shadow-xl hover:scale-105 transition-transform" onClick={() => setIsBlurred(false)}>SAYA MENGERTI</Button>
+                <Button className="w-full bg-primary h-16 text-2xl font-bold shadow-xl" onClick={() => setIsBlurred(false)}>SAYA MENGERTI</Button>
               </Card>
             </div>
           )}
@@ -372,7 +399,7 @@ export default function UjianPage() {
                       const isFlagged = answers[q?.id]?.isFlagged;
                       const isActive = currentIndex === i;
                       return (
-                        <button key={i} onClick={() => { setCurrentIndex(i); saveIndex(i); }} className={cn(
+                        <button key={i} onClick={() => { setCurrentIndex(i); }} className={cn(
                           "h-12 rounded-lg text-sm font-black transition-all border-2 shadow-sm flex items-center justify-center relative",
                           isActive ? "bg-secondary text-secondary-foreground border-secondary scale-110 z-10" 
                           : isFlagged ? "bg-amber-400 text-black border-amber-500"
@@ -425,11 +452,11 @@ export default function UjianPage() {
                 </CardContent>
 
                 <CardFooter className="p-8 border-t bg-white flex justify-between items-center">
-                  <Button variant="ghost" onClick={handlePrev} disabled={currentIndex === 0} className="gap-2 h-14 text-lg font-bold px-8 hover:bg-muted"><ChevronLeft className="h-5 w-5" /> SEBELUMNYA</Button>
+                  <Button variant="ghost" onClick={() => setCurrentIndex(prev => Math.max(0, prev - 1))} disabled={currentIndex === 0} className="gap-2 h-14 text-lg font-bold px-8 hover:bg-muted"><ChevronLeft className="h-5 w-5" /> SEBELUMNYA</Button>
                   {currentIndex < questions.length - 1 ? (
-                    <Button onClick={handleNext} className="bg-primary hover:bg-primary/90 gap-3 h-14 px-10 text-xl font-black shadow-xl transition-all active:scale-95 text-white">SIMPAN & LANJUTKAN <ChevronRight className="h-6 w-6" /></Button>
+                    <Button onClick={() => setCurrentIndex(prev => Math.min(questions.length - 1, prev + 1))} className="bg-primary hover:bg-primary/90 gap-3 h-14 px-10 text-xl font-black shadow-xl transition-all active:scale-95 text-white">SIMPAN & LANJUTKAN <ChevronRight className="h-6 w-6" /></Button>
                   ) : (
-                    <Button onClick={handleSubmit} disabled={isSubmitting} className="bg-primary hover:bg-primary/90 gap-3 h-14 px-10 text-xl font-black shadow-xl transition-all active:scale-95 text-white">{isSubmitting ? "MENGIRIM..." : "KIRIM JAWABAN"} <CheckCircle2 className="h-6 w-6" /></Button>
+                    <Button onClick={() => handleSubmit()} disabled={isSubmitting} className="bg-primary hover:bg-primary/90 gap-3 h-14 px-10 text-xl font-black shadow-xl transition-all active:scale-95 text-white">{isSubmitting ? "MENGIRIM..." : "KIRIM JAWABAN"} <CheckCircle2 className="h-6 w-6" /></Button>
                   )}
                 </CardFooter>
               </Card>
