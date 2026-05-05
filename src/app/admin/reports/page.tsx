@@ -1,3 +1,4 @@
+
 'use client';
 
 import { ProtectedRoute } from "@/components/auth/Protected-route";
@@ -13,7 +14,8 @@ import {
   AlertTriangle, 
   Info, 
   Trash2,
-  ShieldAlert
+  ShieldAlert,
+  RefreshCw
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useFirestore } from "@/firebase";
@@ -45,57 +47,65 @@ export default function AdminReportsPage() {
     setLoading(true);
     setPermissionDenied(false);
     setIndexMissing(false);
+    
     try {
-      // Fetch all profiles to map display names
-      const usersSnap = await getDocs(collection(db, "userProfiles"));
-      const uMap: Record<string, any> = {};
-      usersSnap.forEach(d => {
-        uMap[d.id] = d.data();
-      });
-      setUsersMap(uMap);
+      // 1. Fetch User Profiles independently
+      try {
+        const usersSnap = await getDocs(collection(db, "userProfiles"));
+        const uMap: Record<string, any> = {};
+        usersSnap.forEach(d => {
+          uMap[d.id] = d.data();
+        });
+        setUsersMap(uMap);
+      } catch (e) {
+        console.warn("Could not fetch user profiles:", e);
+      }
 
-      const examsSnap = await getDocs(collection(db, "exams"));
-      const eMap: Record<string, any> = {};
-      examsSnap.forEach(d => {
-        eMap[d.id] = d.data();
-      });
-      setExamsMap(eMap);
+      // 2. Fetch Exams independently
+      try {
+        const examsSnap = await getDocs(collection(db, "exams"));
+        const eMap: Record<string, any> = {};
+        examsSnap.forEach(d => {
+          eMap[d.id] = d.data();
+        });
+        setExamsMap(eMap);
+      } catch (e) {
+        console.warn("Could not fetch exams:", e);
+      }
 
+      // 3. Fetch Results using Collection Group
       const resultsQuery = query(collectionGroup(db, "results"), orderBy("submissionTime", "desc"));
       const resultsSnap = await getDocs(resultsQuery);
       
       const resultsList = resultsSnap.docs.map(d => {
         const data = d.data();
         const path = d.ref.path;
-        const pathParts = path.split('/').filter(Boolean);
-        
-        // Path structure: users/{userId}/results/{resultId}
-        // index 0: users, index 1: userId, index 2: results, index 3: resultId
-        const studentIdFromPath = pathParts[1];
+        // Path: users/{userId}/results/{resultId}
+        const pathParts = path.split('/');
+        const studentIdFromPath = pathParts[1]; // Index 1 is the userId
         
         return { 
           id: d.id, 
           ...data,
-          // Priority: use path-based ID to ensure we match userProfiles documents
           studentId: studentIdFromPath || data.studentId,
           fullPath: path 
         };
       });
       
       setResults(resultsList);
-      setLoading(false);
     } catch (err: any) {
       console.error("Error fetching reports:", err);
-      if (err.message?.includes("FAILED_PRECONDITION") || err.message?.includes("index")) {
+      if (err.message?.includes("index") || err.code === 'failed-precondition') {
         setIndexMissing(true);
-      } else if (err.code === 'permission-denied' || err.message?.includes('permissions')) {
+      } else if (err.code === 'permission-denied') {
         setPermissionDenied(true);
         const permissionError = new FirestorePermissionError({
-          path: 'collectionGroup(results)',
+          path: 'results',
           operation: 'list'
         });
         errorEmitter.emit('permission-error', permissionError);
       }
+    } finally {
       setLoading(false);
     }
   };
@@ -108,19 +118,19 @@ export default function AdminReportsPage() {
     const student = usersMap[res.studentId];
     const studentName = student?.displayName || 'Siswa';
     
-    if (!confirm(`Apakah Anda yakin ingin menghapus nilai ${studentName}? Tindakan ini permanen.`)) {
+    if (!confirm(`Apakah Anda yakin ingin menghapus nilai ${studentName} untuk ujian ${examsMap[res.examId]?.title || ''}?`)) {
       return;
     }
 
-    // Optimistic update
+    // Optimistic Update
     setResults(prev => prev.filter(r => r.fullPath !== res.fullPath));
 
     const resultRef = doc(db, res.fullPath);
     deleteDocumentNonBlocking(resultRef);
     
     toast({
-      title: "Berhasil",
-      description: `Hasil ujian ${studentName} telah dihapus.`
+      title: "Menghapus...",
+      description: `Hasil ujian sedang dihapus dari database.`
     });
   };
 
@@ -128,7 +138,7 @@ export default function AdminReportsPage() {
     const student = usersMap[res.studentId];
     const studentName = (student?.displayName || student?.email || "Siswa").toLowerCase();
     const exam = examsMap[res.examId];
-    const examTitle = (exam?.title || "Unknown Exam").toLowerCase();
+    const examTitle = (exam?.title || "Ujian").toLowerCase();
     const searchString = `${studentName} ${examTitle}`;
     return searchString.includes(searchTerm.toLowerCase());
   });
@@ -145,11 +155,9 @@ export default function AdminReportsPage() {
               <h1 className="text-xl font-bold text-primary">Analitik & Hasil Ujian</h1>
             </div>
             <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={fetchData}>
-                Refresh Data
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => window.print()} className="hidden sm:flex" disabled={permissionDenied || indexMissing}>
-                <Download className="h-4 w-4 mr-2" /> Cetak
+              <Button variant="outline" size="sm" onClick={fetchData} disabled={loading}>
+                <RefreshCw className={cn("h-4 w-4 mr-2", loading && "animate-spin")} />
+                Refresh
               </Button>
             </div>
           </div>
@@ -161,7 +169,7 @@ export default function AdminReportsPage() {
               <Info className="h-4 w-4 text-amber-600" />
               <AlertTitle className="font-bold">Indeks Firestore Diperlukan</AlertTitle>
               <AlertDescription>
-                Halaman ini memerlukan indeks kueri grup. Silakan cek link di pesan error sebelumnya untuk mengaktifkannya.
+                Halaman ini memerlukan indeks kueri grup. Silakan klik link di pesan error konsol atau log Firebase untuk mengaktifkannya.
               </AlertDescription>
             </Alert>
           )}
@@ -171,8 +179,8 @@ export default function AdminReportsPage() {
               <CardContent className="pt-6 text-center space-y-4">
                 <AlertTriangle className="h-12 w-12 text-destructive mx-auto" />
                 <h2 className="text-xl font-bold text-destructive">Akses Database Ditolak</h2>
-                <p className="text-muted-foreground max-w-lg mx-auto">
-                  Akun Anda belum memiliki izin akses penuh. Pastikan UID Anda sudah terdaftar di koleksi <strong>adminUsers</strong>.
+                <p className="text-muted-foreground">
+                  Akun Anda belum memiliki izin admin yang valid di database.
                 </p>
                 <Button variant="outline" onClick={() => window.location.reload()}>Coba Lagi</Button>
               </CardContent>
@@ -235,11 +243,11 @@ export default function AdminReportsPage() {
                   {loading ? (
                     <div className="flex flex-col items-center justify-center py-20 space-y-4">
                       <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary"></div>
-                      <p>Memuat data...</p>
+                      <p>Sinkronisasi data...</p>
                     </div>
                   ) : filteredResults.length === 0 ? (
                     <div className="text-center py-20 bg-muted/10 rounded-lg">
-                      <p className="text-muted-foreground">Tidak ada data hasil ujian.</p>
+                      <p className="text-muted-foreground">Tidak ada data yang ditemukan.</p>
                     </div>
                   ) : (
                     <div className="overflow-x-auto">
@@ -263,15 +271,19 @@ export default function AdminReportsPage() {
                               <TableRow key={res.fullPath} className="hover:bg-muted/30">
                                 <TableCell>
                                   <div className="flex flex-col">
-                                    <span className="font-bold">{user?.displayName || "Siswa"}</span>
-                                    <span className="text-xs text-muted-foreground">{user?.email || "-"}</span>
+                                    <span className="font-bold text-foreground">
+                                      {user?.displayName || (user?.email ? user.email.split('@')[0] : "Siswa")}
+                                    </span>
+                                    <span className="text-[10px] text-muted-foreground font-mono">
+                                      {res.studentId.substring(0, 8)}...
+                                    </span>
                                   </div>
                                 </TableCell>
-                                <TableCell className="font-medium">{exam?.title || "Ujian dihapus"}</TableCell>
+                                <TableCell className="font-medium">{exam?.title || "Paket Ujian"}</TableCell>
                                 <TableCell className="text-center">
                                   <Badge 
                                     variant={warnings > 0 ? "destructive" : "outline"}
-                                    className={cn(warnings > 0 && "animate-pulse")}
+                                    className={cn(warnings > 3 && "animate-bounce")}
                                   >
                                     <ShieldAlert className="h-3 w-3 mr-1" /> {warnings}
                                   </Badge>
@@ -290,7 +302,7 @@ export default function AdminReportsPage() {
                                   <Button 
                                     variant="ghost" 
                                     size="icon" 
-                                    className="text-destructive hover:bg-destructive/10"
+                                    className="text-destructive hover:bg-destructive/10 h-8 w-8"
                                     onClick={() => handleDeleteResult(res)}
                                   >
                                     <Trash2 className="h-4 w-4" />
