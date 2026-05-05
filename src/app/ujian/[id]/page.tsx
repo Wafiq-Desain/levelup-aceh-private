@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from "react";
@@ -38,7 +37,7 @@ import {
   AlertTriangle
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { cn } from "@/utils/cn";
+import { cn } from "@/lib/utils";
 
 export default function UjianPage() {
   const { id: examId } = useParams();
@@ -137,7 +136,7 @@ export default function UjianPage() {
 
       toast({ 
         title: isAuto ? "Ujian Dihentikan Paksa!" : "Ujian Selesai!", 
-        description: isAuto ? "Anda terdeteksi melakukan kecurangan berulang." : "Skor Anda telah berhasil dikirim.",
+        description: isAuto ? "Anda terdeteksi melakukan kecurangan berulang (Pindah Tab 3x)." : "Skor Anda telah berhasil dikirim.",
         variant: isAuto ? "destructive" : "default"
       });
       
@@ -331,7 +330,7 @@ export default function UjianPage() {
             <AlertTriangle className="h-16 w-16 text-destructive mx-auto" />
             <div className="space-y-2">
               <CardTitle className="text-2xl font-bold">Batas Percobaan Habis</CardTitle>
-              <p className="text-muted-foreground">Anda telah mencapai batas maksimal 3 kali percobaan untuk ujian ini. Silakan hubungi admin jika ada kendala.</p>
+              <p className="text-muted-foreground">Anda telah mencapai batas maksimal 3 kali percobaan untuk paket ujian ini. Silakan hubungi admin jika ada kendala.</p>
             </div>
             <Button className="w-full h-12 font-bold" onClick={() => router.push('/dashboard')}>Kembali ke Dashboard</Button>
           </Card>
@@ -364,7 +363,7 @@ export default function UjianPage() {
                 <Clock className="h-6 w-6" />
                 {formatTime(timeLeft)}
               </div>
-              <Button variant="destructive" size="lg" onClick={() => handleSubmit()} disabled={isSubmitting} className="font-bold px-8 bg-primary hover:bg-primary/90">
+              <Button variant="destructive" size="lg" onClick={() => handleSubmit()} disabled={isSubmitting} className="font-bold px-8 bg-primary hover:bg-primary/90 text-white">
                 SELESAI
               </Button>
             </div>
@@ -381,7 +380,7 @@ export default function UjianPage() {
                   <CardTitle className="text-3xl font-black text-destructive">DETEKSI PELANGGARAN!</CardTitle>
                   <p className="text-muted-foreground text-lg font-medium">Anda terdeteksi meninggalkan halaman ujian. Pelanggaran ke-3 akan mengakibatkan ujian dihentikan otomatis.</p>
                 </div>
-                <Button className="w-full bg-primary h-16 text-2xl font-bold shadow-xl" onClick={() => setIsBlurred(false)}>SAYA MENGERTI</Button>
+                <Button className="w-full bg-primary h-16 text-2xl font-bold shadow-xl text-white" onClick={() => setIsBlurred(false)}>SAYA MENGERTI</Button>
               </Card>
             </div>
           )}
