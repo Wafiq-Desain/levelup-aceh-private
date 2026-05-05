@@ -169,7 +169,7 @@ export default function DashboardPage() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                     {exams.map((exam) => {
                       const attempts = getAttemptCount(exam.id);
-                      const isLimitReached = attempts >= 3;
+                      const isLimitReached = attempts >= 2;
                       const hasFinishedOnce = attempts > 0;
 
                       return (
@@ -194,7 +194,7 @@ export default function DashboardPage() {
                                 <span className="text-xs capitalize">{exam.questionIds?.length || 0} Soal</span>
                               </div>
                               <div className={`text-[11px] font-bold ${isLimitReached ? 'text-destructive' : 'text-primary'}`}>
-                                Percobaan: {attempts}/3 {isLimitReached && "(Batas Tercapai)"}
+                                Percobaan: {attempts}/2 {isLimitReached && "(Batas Tercapai)"}
                               </div>
                             </CardDescription>
                           </CardHeader>
@@ -257,7 +257,8 @@ export default function DashboardPage() {
                 </CardHeader>
                 <CardContent className="relative z-10 pt-0">
                   <p className="text-sm opacity-90 leading-relaxed">
-                    Setiap paket ujian memiliki batas 3 kali percobaan. Jika Anda terdeteksi melakukan kecurangan seperti berpindah tab sebanyak 3 kali, sistem akan otomatis mengeluarkan Anda dan kuota percobaan akan berkurang.
+                    Setiap paket ujian memiliki batas <strong>Maksimal 2 kali percobaan</strong>. 
+                    Sistem keamanan kami sangat ketat: Jika Anda berpindah tab atau membuka aplikasi lain (seperti kalkulator), sistem akan <strong>langsung mengakhiri ujian</strong> secara otomatis dan kuota percobaan Anda akan berkurang.
                   </p>
                 </CardContent>
                 <div className="absolute -bottom-6 -right-6 p-4 opacity-10">

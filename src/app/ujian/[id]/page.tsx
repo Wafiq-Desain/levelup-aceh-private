@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from "react";
@@ -54,11 +55,9 @@ export default function UjianPage() {
   const [loading, setLoading] = useState(true);
   const [timeLeft, setTimeLeft] = useState(3600);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [warningCount, setWarningCount] = useState(0);
   const [attemptLimitReached, setAttemptLimitReached] = useState(false);
   
   const hasSubmitted = useRef(false);
-  const warningCountRef = useRef(0);
 
   // Security: Prevent Right Click, Selection, and Navigation
   useEffect(() => {
@@ -138,7 +137,7 @@ export default function UjianPage() {
         correctAnswerCount: correctCount,
         incorrectAnswerCount: answeredCount - correctCount,
         unansweredCount: Math.max(0, questions.length - answeredCount),
-        antiCheatWarningCount: warningCountRef.current,
+        antiCheatWarningCount: isAuto ? 1 : 0,
         isAutoSubmitted: isAuto,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
@@ -147,8 +146,8 @@ export default function UjianPage() {
       setDocumentNonBlocking(resultRef, resultData, { merge: true });
 
       toast({ 
-        title: isAuto ? "Ujian Dihentikan Paksa!" : "Ujian Selesai!", 
-        description: isAuto ? "Kecurangan berulang terdeteksi (Keluar Halaman/Pindah Tab)." : "Hasil Anda telah berhasil disimpan.",
+        title: isAuto ? "UJIAN DIHENTIKAN PAKSA!" : "Ujian Selesai!", 
+        description: isAuto ? "Kecurangan terdeteksi (Keluar Halaman/Pindah Tab). Kuota Anda berkurang." : "Hasil Anda telah berhasil disimpan.",
         variant: isAuto ? "destructive" : "default"
       });
       
@@ -162,14 +161,12 @@ export default function UjianPage() {
     }
   }, [user, examId, questions, answers, db, router, toast]);
 
-  // Anti-Cheat: Enhanced Detection (Tab Switch + App Switch/Blur)
+  // Anti-Cheat: Enhanced Detection (Immediate Force Submit on violation)
   useEffect(() => {
     const handleViolation = () => {
       if (hasSubmitted.current) return;
       
       setIsBlurred(true);
-      warningCountRef.current += 1;
-      setWarningCount(warningCountRef.current);
       
       if (user && examId) {
         const warningRef = collection(db, "users", user.uid, "examSessions", examId as string, "antiCheatWarnings");
@@ -186,15 +183,8 @@ export default function UjianPage() {
         });
       }
 
-      if (warningCountRef.current >= 3) {
-        handleSubmit(true);
-      } else {
-        toast({
-          variant: "destructive",
-          title: "PERINGATAN KERAS!",
-          description: `Jangan meninggalkan halaman ujian! Pelanggaran: ${warningCountRef.current}/3.`,
-        });
-      }
+      // NO WARNINGS - Strict Enforcement
+      handleSubmit(true);
     };
 
     const onVisibilityChange = () => {
@@ -205,18 +195,12 @@ export default function UjianPage() {
       handleViolation();
     };
 
-    const onWindowFocus = () => {
-      // Keep blurred until user clicks "I Understand"
-    };
-
     document.addEventListener("visibilitychange", onVisibilityChange);
     window.addEventListener("blur", onWindowBlur);
-    window.addEventListener("focus", onWindowFocus);
 
     return () => {
       document.removeEventListener("visibilitychange", onVisibilityChange);
       window.removeEventListener("blur", onWindowBlur);
-      window.removeEventListener("focus", onWindowFocus);
     };
   }, [user, examId, toast, db, handleSubmit]);
 
@@ -229,7 +213,9 @@ export default function UjianPage() {
         const resultsRef = collection(db, "users", user.uid, "results");
         const resultsQuery = query(resultsRef, where("examId", "==", examId));
         const resultsSnap = await getDocs(resultsQuery);
-        if (resultsSnap.size >= 3) {
+        
+        // Strict: Limit is now 2 attempts
+        if (resultsSnap.size >= 2) {
           setAttemptLimitReached(true);
           setLoading(false);
           return;
@@ -262,8 +248,6 @@ export default function UjianPage() {
           if (sessionSnap.exists()) {
             const sessionData = sessionSnap.data();
             setCurrentIndex(sessionData.currentQuestionIndex || 0);
-            warningCountRef.current = sessionData.antiCheatWarningCount || 0;
-            setWarningCount(warningCountRef.current);
             
             const answersRef = collection(db, "users", user.uid, "examSessions", examId as string, "examAnswers");
             const answersSnap = await getDocs(answersRef);
@@ -361,7 +345,7 @@ export default function UjianPage() {
             <AlertTriangle className="h-16 w-16 text-destructive mx-auto" />
             <div className="space-y-2">
               <CardTitle className="text-2xl font-bold">Batas Percobaan Habis</CardTitle>
-              <p className="text-muted-foreground">Anda telah mencapai batas maksimal 3 kali percobaan untuk paket ujian ini.</p>
+              <p className="text-muted-foreground">Anda telah mencapai batas maksimal 2 kali percobaan untuk paket ujian ini.</p>
             </div>
             <Button className="w-full h-12 font-bold" onClick={() => router.push('/dashboard')}>Kembali ke Dashboard</Button>
           </Card>
@@ -380,9 +364,9 @@ export default function UjianPage() {
           <div className="container mx-auto px-4 h-20 flex items-center justify-between">
             <div className="flex flex-col">
               <h2 className="text-xl font-bold text-primary truncate max-w-[200px] md:max-w-md">{exam?.title}</h2>
-              <div className="flex items-center gap-2 text-sm text-muted-foreground mt-1">
-                <ShieldAlert className={cn("h-4 w-4", warningCount > 0 ? "text-destructive" : "text-green-500")} />
-                <span className="font-semibold text-destructive">Pelanggaran: {warningCount}/3</span>
+              <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1 font-bold">
+                <ShieldAlert className="h-4 w-4 text-destructive" />
+                Sistem Keamanan: Ketat
               </div>
             </div>
             
@@ -403,22 +387,6 @@ export default function UjianPage() {
         </header>
 
         <main className="container mx-auto px-4 py-8">
-          {isBlurred && !hasSubmitted.current && (
-            <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-md pointer-events-auto">
-              <Card className="max-w-md text-center p-10 space-y-6 shadow-2xl border-t-8 border-destructive">
-                <ShieldAlert className="h-20 w-20 text-destructive mx-auto animate-bounce" />
-                <div className="space-y-2">
-                  <CardTitle className="text-3xl font-black text-destructive">DETEKSI PELANGGARAN!</CardTitle>
-                  <p className="text-muted-foreground text-lg font-medium leading-relaxed">
-                    Anda terdeteksi meninggalkan halaman atau membuka aplikasi lain (kalkulator/browser). <br/><br/>
-                    <strong>Peringatan ke-3 akan mengakhiri ujian otomatis!</strong>
-                  </p>
-                </div>
-                <Button className="w-full bg-primary h-16 text-2xl font-bold shadow-xl text-white" onClick={() => setIsBlurred(false)}>SAYA MENGERTI</Button>
-              </Card>
-            </div>
-          )}
-
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
             <div className="lg:col-span-1 space-y-6">
               <Card className="shadow-lg border-t-4 border-primary">
@@ -446,6 +414,14 @@ export default function UjianPage() {
                   </div>
                 </CardContent>
               </Card>
+              
+              <Alert variant="destructive" className="bg-destructive/5 border-destructive/20">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertTitle className="font-bold">PERINGATAN</AlertTitle>
+                <AlertDescription className="text-xs">
+                  Jangan tinggalkan halaman atau buka aplikasi lain. Pelanggaran akan mengakhiri ujian otomatis tanpa peringatan.
+                </AlertDescription>
+              </Alert>
             </div>
 
             <div className="lg:col-span-3">
