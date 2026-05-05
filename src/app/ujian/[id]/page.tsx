@@ -1,6 +1,7 @@
+
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ProtectedRoute } from "@/components/auth/Protected-route";
 import { useAppAuth } from "@/contexts/auth-context";
@@ -26,13 +27,11 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { 
-  AlertCircle, 
   Clock, 
   ChevronLeft, 
   ChevronRight, 
   CheckCircle2, 
   Flag,
-  User as UserIcon,
   BookOpen,
   ShieldAlert
 } from "lucide-react";
@@ -118,7 +117,17 @@ export default function UjianPage() {
           const questionsRef = collection(db, "exams", examId as string, "questions");
           const qSnap = await getDocs(query(questionsRef, orderBy("createdAt", "asc")));
           const qList = qSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-          setQuestions(qList);
+          
+          // Filter questions based on the questionIds array in the exam document
+          // This ensures that deleted questions don't show up
+          if (examData.questionIds && examData.questionIds.length > 0) {
+            const filtered = examData.questionIds.map((qId: string) => 
+              qList.find(q => q.id === qId)
+            ).filter(Boolean);
+            setQuestions(filtered);
+          } else {
+            setQuestions(qList);
+          }
           
           setTimeLeft(examData.durationMinutes ? examData.durationMinutes * 60 : 3600);
 

@@ -7,9 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { 
   ChevronLeft, 
-  Download, 
   Search, 
-  FileText, 
   TrendingUp, 
   AlertTriangle, 
   Info, 
@@ -48,7 +46,7 @@ export default function AdminReportsPage() {
     setIndexMissing(false);
     
     try {
-      // 1. Ambil data User Profiles untuk mendapatkan Nama Lengkap (displayName)
+      // 1. Ambil data User Profiles
       try {
         const usersSnap = await getDocs(collection(db, "userProfiles"));
         const uMap: Record<string, any> = {};
@@ -60,7 +58,7 @@ export default function AdminReportsPage() {
         console.warn("Gagal mengambil pemetaan profil user:", e);
       }
 
-      // 2. Ambil data Paket Ujian untuk nama judul
+      // 2. Ambil data Paket Ujian
       try {
         const examsSnap = await getDocs(collection(db, "exams"));
         const eMap: Record<string, any> = {};
@@ -80,6 +78,7 @@ export default function AdminReportsPage() {
         const data = d.data();
         const path = d.ref.path;
         // Path Firestore: users/{userId}/results/{resultId}
+        // Split path: ["users", "{userId}", "results", "{resultId}"] -> parts[1] is {userId}
         const pathParts = path.split('/');
         const studentIdFromPath = pathParts[1]; 
         
@@ -176,7 +175,7 @@ export default function AdminReportsPage() {
               <CardContent className="pt-6 text-center space-y-4">
                 <AlertTriangle className="h-12 w-12 text-destructive mx-auto" />
                 <h2 className="text-xl font-bold text-destructive">Akses Ditolak</h2>
-                <p className="text-muted-foreground">Anda tidak memiliki izin untuk melihat laporan pengerjaan siswa.</p>
+                <p className="text-muted-foreground">Anda tidak memiliki izin untuk melihat laporan pengerjaan siswa. Pastikan UID Anda ada di koleksi adminUsers.</p>
                 <Button variant="outline" onClick={fetchData}>Muat Ulang</Button>
               </CardContent>
             </Card>
@@ -222,12 +221,12 @@ export default function AdminReportsPage() {
                 <CardHeader className="flex flex-col md:flex-row items-center justify-between space-y-4 md:space-y-0 bg-muted/10 border-b">
                   <div>
                     <CardTitle className="text-lg">Daftar Hasil Pengerjaan Siswa</CardTitle>
-                    <CardDescription>Identitas siswa dipetakan langsung dari Profil Registrasi.</CardDescription>
+                    <CardDescription>Nama lengkap ditampilkan jika sudah diisi di profil.</CardDescription>
                   </div>
                   <div className="relative w-full md:w-80">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input 
-                      placeholder="Cari Nama Siswa..." 
+                      placeholder="Cari Nama atau ID Siswa..." 
                       className="pl-9 bg-white"
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
@@ -238,12 +237,12 @@ export default function AdminReportsPage() {
                   {loading ? (
                     <div className="flex flex-col items-center justify-center py-20 gap-4">
                       <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary"></div>
-                      <p className="text-muted-foreground font-medium">Sinkronisasi identitas siswa...</p>
+                      <p className="text-muted-foreground font-medium">Memuat data...</p>
                     </div>
                   ) : filteredResults.length === 0 ? (
                     <div className="text-center py-20">
                       <Info className="h-10 w-10 text-muted-foreground mx-auto mb-2 opacity-20" />
-                      <p className="text-muted-foreground">Belum ada hasil ujian yang masuk.</p>
+                      <p className="text-muted-foreground">Belum ada hasil ujian yang sesuai.</p>
                     </div>
                   ) : (
                     <div className="overflow-x-auto">
@@ -252,7 +251,6 @@ export default function AdminReportsPage() {
                           <TableRow>
                             <TableHead className="font-bold text-foreground">IDENTITAS SISWA</TableHead>
                             <TableHead className="font-bold text-foreground">PAKET UJIAN</TableHead>
-                            <TableHead className="text-center font-bold text-foreground">SELESAI</TableHead>
                             <TableHead className="text-center font-bold text-foreground">PELANGGARAN</TableHead>
                             <TableHead className="text-center font-bold text-foreground">SKOR IRT</TableHead>
                             <TableHead className="text-right font-bold text-foreground">AKSI</TableHead>
@@ -269,10 +267,10 @@ export default function AdminReportsPage() {
                                 <TableCell>
                                   <div className="flex flex-col">
                                     <span className="font-bold text-primary text-base uppercase">
-                                      {userProfile?.displayName || "Nama Belum Diisi"}
+                                      {userProfile?.displayName || "Siswa Tanpa Nama"}
                                     </span>
-                                    <span className="text-[11px] text-muted-foreground font-mono bg-muted/50 px-1 rounded w-fit">
-                                      ID: {res.studentId}
+                                    <span className="text-[10px] text-muted-foreground font-mono bg-muted/80 px-1 rounded w-fit mt-1">
+                                      UID: {res.studentId}
                                     </span>
                                     {userProfile?.email && (
                                       <span className="text-xs text-muted-foreground italic">
@@ -283,9 +281,6 @@ export default function AdminReportsPage() {
                                 </TableCell>
                                 <TableCell className="font-medium">
                                   {exam?.title || "Ujian Tidak Diketahui"}
-                                </TableCell>
-                                <TableCell className="text-center text-xs text-muted-foreground">
-                                  {res.submissionTime ? new Date(res.submissionTime).toLocaleString('id-ID') : '-'}
                                 </TableCell>
                                 <TableCell className="text-center">
                                   <Badge 
@@ -304,9 +299,9 @@ export default function AdminReportsPage() {
                                   <Button 
                                     variant="ghost" 
                                     size="icon" 
-                                    className="text-destructive hover:bg-destructive/10 h-10 w-10 transition-colors"
+                                    className="text-destructive hover:bg-destructive/10 h-10 w-10"
                                     onClick={() => handleDeleteResult(res)}
-                                    title="Hapus Nilai Siswa"
+                                    title="Hapus Nilai"
                                   >
                                     <Trash2 className="h-5 w-5" />
                                   </Button>
