@@ -77,9 +77,10 @@ export default function AdminReportsPage() {
       const resultsList = resultsSnap.docs.map(d => {
         const data = d.data();
         const path = d.ref.path;
-        // Path is: users/{userId}/results/{resultId}
+        // Expected Path: users/{userId}/results/{resultId}
         const pathParts = path.split('/');
-        const studentIdFromPath = pathParts[1]; // Index 1 is the userId
+        // Extra careful ID extraction
+        const studentIdFromPath = pathParts[pathParts.indexOf('users') + 1];
         
         return { 
           id: d.id, 
@@ -110,19 +111,20 @@ export default function AdminReportsPage() {
     const userProfile = usersMap[res.studentId];
     const studentDisplayName = userProfile?.displayName || userProfile?.email || res.studentId;
     
-    if (!confirm(`Hapus nilai untuk siswa: ${studentDisplayName}?\n\nTindakan ini permanen.`)) {
+    if (!confirm(`Hapus nilai untuk siswa: ${studentDisplayName}?\n\nTindakan ini permanen dan tidak dapat dibatalkan.`)) {
       return;
     }
 
     // Optimistic UI update
     setResults(prev => prev.filter(r => r.fullPath !== res.fullPath));
 
+    // Ensure we use the correct document reference
     const resultRef = doc(db, res.fullPath);
     deleteDocumentNonBlocking(resultRef);
     
     toast({
-      title: "Berhasil",
-      description: `Data nilai ${studentDisplayName} telah dihapus.`
+      title: "Berhasil Dihapus",
+      description: `Data nilai ${studentDisplayName} telah dihapus dari sistem.`
     });
   };
 
@@ -130,7 +132,7 @@ export default function AdminReportsPage() {
     const student = usersMap[res.studentId];
     const studentName = (student?.displayName || "Siswa").toLowerCase();
     const studentEmail = (student?.email || "").toLowerCase();
-    const studentId = res.studentId.toLowerCase();
+    const studentId = (res.studentId || "").toLowerCase();
     const exam = examsMap[res.examId];
     const examTitle = (exam?.title || "Ujian").toLowerCase();
     
@@ -220,12 +222,12 @@ export default function AdminReportsPage() {
                 <CardHeader className="flex flex-col md:flex-row items-center justify-between space-y-4 md:space-y-0 bg-muted/10 border-b">
                   <div>
                     <CardTitle className="text-lg">Hasil Pengerjaan Siswa</CardTitle>
-                    <CardDescription>Nama akan muncul jika siswa sudah melengkapi profil saat registrasi.</CardDescription>
+                    <CardDescription>Daftar nilai berdasarkan profil yang terdaftar saat registrasi.</CardDescription>
                   </div>
                   <div className="relative w-full md:w-80">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input 
-                      placeholder="Cari Nama atau ID Siswa..." 
+                      placeholder="Cari Nama, Email atau ID..." 
                       className="pl-9 bg-white"
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
@@ -236,7 +238,7 @@ export default function AdminReportsPage() {
                   {loading ? (
                     <div className="flex flex-col items-center justify-center py-20 gap-4">
                       <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary"></div>
-                      <p className="text-muted-foreground">Memuat data...</p>
+                      <p className="text-muted-foreground">Sinkronisasi data...</p>
                     </div>
                   ) : filteredResults.length === 0 ? (
                     <div className="text-center py-20">
@@ -284,7 +286,7 @@ export default function AdminReportsPage() {
                                 <TableCell className="text-center">
                                   <Badge 
                                     variant={warnings > 0 ? "destructive" : "outline"}
-                                    className={cn("font-bold", warnings > 3 && "animate-pulse")}
+                                    className={cn("font-bold", warnings >= 3 && "animate-pulse")}
                                   >
                                     <ShieldAlert className="h-3 w-3 mr-1" /> {warnings}
                                   </Badge>
@@ -300,6 +302,7 @@ export default function AdminReportsPage() {
                                     size="icon" 
                                     className="text-destructive hover:bg-destructive/10 h-10 w-10"
                                     onClick={() => handleDeleteResult(res)}
+                                    title="Hapus Nilai"
                                   >
                                     <Trash2 className="h-5 w-5" />
                                   </Button>
