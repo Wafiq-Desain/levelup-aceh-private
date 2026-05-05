@@ -119,7 +119,6 @@ export default function UjianPage() {
           const qList = qSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
           
           // CRITICAL: Filter questions based on the questionIds array in the exam document
-          // This ensures that deleted questions don't show up
           let orderedQuestions = [];
           if (examData.questionIds && examData.questionIds.length > 0) {
             orderedQuestions = examData.questionIds.map((qId: string) => 
@@ -263,13 +262,19 @@ export default function UjianPage() {
       let totalEarnedWeight = 0;
       let totalMaxWeight = 0;
       let correctCount = 0;
+      let answeredCount = 0;
 
       questions.forEach((q) => {
         const weight = weights[q.difficultyLevel] || 1;
         totalMaxWeight += weight;
-        if (answers[q.id]?.choice === String.fromCharCode(65 + q.correctAnswerIndex)) {
-          totalEarnedWeight += weight;
-          correctCount++;
+        const studentAnswer = answers[q.id]?.choice;
+        
+        if (studentAnswer) {
+          answeredCount++;
+          if (studentAnswer === String.fromCharCode(65 + q.correctAnswerIndex)) {
+            totalEarnedWeight += weight;
+            correctCount++;
+          }
         }
       });
 
@@ -285,17 +290,21 @@ export default function UjianPage() {
         totalScore: irtScore,
         weightedScore: totalEarnedWeight,
         correctAnswerCount: correctCount,
-        incorrectAnswerCount: questions.length - correctCount,
-        unansweredCount: questions.length - Object.keys(answers).length,
+        incorrectAnswerCount: answeredCount - correctCount,
+        unansweredCount: questions.length - answeredCount,
         antiCheatWarningCount: warningCount,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       };
 
-      await setDocumentNonBlocking(resultRef, resultData, { merge: true });
+      setDocumentNonBlocking(resultRef, resultData, { merge: true });
 
       toast({ title: "Ujian Selesai!", description: "Skor Anda telah berhasil dikirim." });
-      router.push("/dashboard");
+      
+      // Delay redirect slightly to ensure Firestore operation starts
+      setTimeout(() => {
+        router.push("/dashboard");
+      }, 1000);
     } catch (err) {
       toast({ variant: "destructive", title: "Gagal Mengirim", description: "Terjadi kesalahan saat menyimpan hasil." });
       setIsSubmitting(false);

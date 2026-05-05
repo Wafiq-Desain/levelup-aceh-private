@@ -55,12 +55,13 @@ service cloud.firestore {
     // Collection Group rules for Admin Reports (Must match the collection name exactly)
     match /{path=**}/results/{resultId} {
       allow list: if isAdmin();
-      allow get: if isOwner(userId) || isAdmin();
+      // To allow students to get their own results via collection group (if ever needed)
+      allow get: if isAdmin() || (isSignedIn() && request.auth.uid in path);
     }
     
     match /{path=**}/resultAnswers/{answerId} {
       allow list: if isAdmin();
-      allow get: if isOwner(userId) || isAdmin();
+      allow get: if isAdmin() || (isSignedIn() && request.auth.uid in path);
     }
 
     match /users/{userId} {
@@ -87,13 +88,14 @@ service cloud.firestore {
 
       match /results/{resultId} {
         allow get, list: if isOwner(userId) || isAdmin();
-        allow create: if isOwner(userId); 
-        allow update, delete: if isAdmin();
+        // Students need to be able to create AND update their results (e.g. re-taking an exam)
+        allow create, update: if isOwner(userId); 
+        allow delete: if isAdmin();
 
         match /resultAnswers/{resultAnswerId} {
           allow get, list: if isOwner(userId) || isAdmin();
-          allow create: if isOwner(userId);
-          allow update, delete: if isAdmin();
+          allow create, update: if isOwner(userId);
+          allow delete: if isAdmin();
         }
       }
     }
