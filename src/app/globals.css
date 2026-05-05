@@ -57,6 +57,7 @@
   }
 }
 
+/* Proteksi Anti-Copy & Screenshot */
 .no-select {
   -webkit-touch-callout: none;
   -webkit-user-select: none;
@@ -66,8 +67,12 @@
   user-select: none;
 }
 
+/* Sembunyikan konten saat mencoba Print atau Screenshot via Print Function */
 @media print {
   body {
+    display: none !important;
+  }
+  * {
     display: none !important;
   }
 }
