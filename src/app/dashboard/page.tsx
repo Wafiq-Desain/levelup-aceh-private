@@ -6,7 +6,7 @@ import { useAppAuth } from "@/contexts/auth-context";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent, CardDescription, CardFooter } from "@/components/ui/card";
 import { useRouter } from "next/navigation";
-import { BookOpen, LogOut, Settings, Award, User, ListChecks, LayoutDashboard, ShieldCheck, TrendingUp, CheckCircle, AlertCircle } from "lucide-react";
+import { BookOpen, LogOut, Settings, Award, User, ListChecks, LayoutDashboard, ShieldCheck, TrendingUp, CheckCircle, AlertCircle, Users } from "lucide-react";
 import { useAuth, useFirestore } from "@/firebase";
 import { signOut } from "firebase/auth";
 import { useEffect, useState } from "react";
@@ -19,6 +19,7 @@ export default function DashboardPage() {
   const db = useFirestore();
   const [exams, setExams] = useState<any[]>([]);
   const [userResults, setUserResults] = useState<any[]>([]);
+  const [totalStudents, setTotalStudents] = useState(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -35,6 +36,13 @@ export default function DashboardPage() {
         const qResults = query(collection(db, "users", user.uid, "results"), orderBy("submissionTime", "desc"));
         const resultsSnapshot = await getDocs(qResults);
         setUserResults(resultsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+
+        // Admin Stats: Total Students
+        if (role === 'admin') {
+          const qStudents = query(collection(db, "userProfiles"), where("role", "==", "student"));
+          const studentsSnapshot = await getDocs(qStudents);
+          setTotalStudents(studentsSnapshot.size);
+        }
       } catch (err) {
         console.error("Error fetching dashboard data:", err);
       } finally {
@@ -42,7 +50,7 @@ export default function DashboardPage() {
       }
     };
     fetchDashboardData();
-  }, [db, user]);
+  }, [db, user, role]);
 
   const handleSignOut = async () => {
     await signOut(auth);
@@ -105,7 +113,7 @@ export default function DashboardPage() {
                       </CardHeader>
                       <CardFooter>
                         <Button className="w-full bg-primary hover:bg-primary/90" onClick={() => router.push('/admin/exams')}>
-                          Kelola Sekarang
+                          Kelola Ujian
                         </Button>
                       </CardFooter>
                     </Card>
@@ -113,13 +121,27 @@ export default function DashboardPage() {
                       <CardHeader className="pb-2">
                         <CardTitle className="text-lg flex items-center gap-2">
                           <Award className="h-5 w-5 text-secondary-foreground" />
-                          Analitik & Hasil
+                          Laporan & Hasil
                         </CardTitle>
-                        <CardDescription>Lihat perkembangan skor dan laporan siswa.</CardDescription>
+                        <CardDescription>Lihat perkembangan skor secara umum.</CardDescription>
                       </CardHeader>
                       <CardFooter>
                         <Button variant="outline" className="w-full border-primary text-primary hover:bg-primary/10" onClick={() => router.push('/admin/reports')}>
                           Buka Laporan
+                        </Button>
+                      </CardFooter>
+                    </Card>
+                    <Card className="hover:shadow-md transition-all border-l-4 border-blue-500 bg-white sm:col-span-2">
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-lg flex items-center gap-2">
+                          <Users className="h-5 w-5 text-blue-500" />
+                          Manajemen Siswa
+                        </CardTitle>
+                        <CardDescription>Total {totalStudents} Siswa Terdaftar. Lihat profil dan nilai individu.</CardDescription>
+                      </CardHeader>
+                      <CardFooter>
+                        <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white" onClick={() => router.push('/admin/students')}>
+                          Kelola Siswa
                         </Button>
                       </CardFooter>
                     </Card>
