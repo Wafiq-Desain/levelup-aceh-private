@@ -46,7 +46,7 @@ export default function AdminReportsPage() {
     setIndexMissing(false);
     
     try {
-      // 1. Ambil data User Profiles
+      // 1. Fetch User Profiles first to map IDs to Names
       try {
         const usersSnap = await getDocs(collection(db, "userProfiles"));
         const uMap: Record<string, any> = {};
@@ -58,7 +58,7 @@ export default function AdminReportsPage() {
         console.warn("Gagal mengambil pemetaan profil user:", e);
       }
 
-      // 2. Ambil data Paket Ujian
+      // 2. Fetch Exam titles
       try {
         const examsSnap = await getDocs(collection(db, "exams"));
         const eMap: Record<string, any> = {};
@@ -70,17 +70,16 @@ export default function AdminReportsPage() {
         console.warn("Gagal mengambil pemetaan ujian:", e);
       }
 
-      // 3. Ambil data Hasil menggunakan Collection Group
+      // 3. Fetch results using collectionGroup
       const resultsQuery = query(collectionGroup(db, "results"), orderBy("submissionTime", "desc"));
       const resultsSnap = await getDocs(resultsQuery);
       
       const resultsList = resultsSnap.docs.map(d => {
         const data = d.data();
         const path = d.ref.path;
-        // Path Firestore: users/{userId}/results/{resultId}
-        // Split path: ["users", "{userId}", "results", "{resultId}"] -> parts[1] is {userId}
+        // Path is: users/{userId}/results/{resultId}
         const pathParts = path.split('/');
-        const studentIdFromPath = pathParts[1]; 
+        const studentIdFromPath = pathParts[1]; // Index 1 is the userId
         
         return { 
           id: d.id, 
@@ -111,11 +110,11 @@ export default function AdminReportsPage() {
     const userProfile = usersMap[res.studentId];
     const studentDisplayName = userProfile?.displayName || userProfile?.email || res.studentId;
     
-    if (!confirm(`Hapus nilai untuk siswa: ${studentDisplayName}?\n\nTindakan ini permanen dan data nilai akan hilang.`)) {
+    if (!confirm(`Hapus nilai untuk siswa: ${studentDisplayName}?\n\nTindakan ini permanen.`)) {
       return;
     }
 
-    // Update state lokal secara optimis
+    // Optimistic UI update
     setResults(prev => prev.filter(r => r.fullPath !== res.fullPath));
 
     const resultRef = doc(db, res.fullPath);
@@ -123,7 +122,7 @@ export default function AdminReportsPage() {
     
     toast({
       title: "Berhasil",
-      description: `Data nilai ${studentDisplayName} telah dihapus dari sistem.`
+      description: `Data nilai ${studentDisplayName} telah dihapus.`
     });
   };
 
@@ -175,7 +174,7 @@ export default function AdminReportsPage() {
               <CardContent className="pt-6 text-center space-y-4">
                 <AlertTriangle className="h-12 w-12 text-destructive mx-auto" />
                 <h2 className="text-xl font-bold text-destructive">Akses Ditolak</h2>
-                <p className="text-muted-foreground">Anda tidak memiliki izin untuk melihat laporan pengerjaan siswa. Pastikan UID Anda ada di koleksi adminUsers.</p>
+                <p className="text-muted-foreground">Anda tidak memiliki izin untuk melihat laporan. Pastikan UID Anda terdaftar di koleksi adminUsers.</p>
                 <Button variant="outline" onClick={fetchData}>Muat Ulang</Button>
               </CardContent>
             </Card>
@@ -193,7 +192,7 @@ export default function AdminReportsPage() {
                 </Card>
                 <Card className="border-l-4 border-green-500 shadow-sm bg-white">
                   <CardHeader className="pb-2">
-                    <CardDescription>Rata-rata Skor IRT</CardDescription>
+                    <CardDescription>Rata-rata Skor</CardDescription>
                     <div className="flex items-center justify-between">
                       <CardTitle className="text-3xl font-bold">
                         {results.length > 0 
@@ -220,8 +219,8 @@ export default function AdminReportsPage() {
               <Card className="shadow-lg border-none">
                 <CardHeader className="flex flex-col md:flex-row items-center justify-between space-y-4 md:space-y-0 bg-muted/10 border-b">
                   <div>
-                    <CardTitle className="text-lg">Daftar Hasil Pengerjaan Siswa</CardTitle>
-                    <CardDescription>Nama lengkap ditampilkan jika sudah diisi di profil.</CardDescription>
+                    <CardTitle className="text-lg">Hasil Pengerjaan Siswa</CardTitle>
+                    <CardDescription>Nama akan muncul jika siswa sudah melengkapi profil saat registrasi.</CardDescription>
                   </div>
                   <div className="relative w-full md:w-80">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -237,12 +236,12 @@ export default function AdminReportsPage() {
                   {loading ? (
                     <div className="flex flex-col items-center justify-center py-20 gap-4">
                       <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary"></div>
-                      <p className="text-muted-foreground font-medium">Memuat data...</p>
+                      <p className="text-muted-foreground">Memuat data...</p>
                     </div>
                   ) : filteredResults.length === 0 ? (
                     <div className="text-center py-20">
                       <Info className="h-10 w-10 text-muted-foreground mx-auto mb-2 opacity-20" />
-                      <p className="text-muted-foreground">Belum ada hasil ujian yang sesuai.</p>
+                      <p className="text-muted-foreground">Tidak ada hasil ujian yang ditemukan.</p>
                     </div>
                   ) : (
                     <div className="overflow-x-auto">
@@ -270,7 +269,7 @@ export default function AdminReportsPage() {
                                       {userProfile?.displayName || "Siswa Tanpa Nama"}
                                     </span>
                                     <span className="text-[10px] text-muted-foreground font-mono bg-muted/80 px-1 rounded w-fit mt-1">
-                                      UID: {res.studentId}
+                                      ID: {res.studentId}
                                     </span>
                                     {userProfile?.email && (
                                       <span className="text-xs text-muted-foreground italic">
@@ -301,7 +300,6 @@ export default function AdminReportsPage() {
                                     size="icon" 
                                     className="text-destructive hover:bg-destructive/10 h-10 w-10"
                                     onClick={() => handleDeleteResult(res)}
-                                    title="Hapus Nilai"
                                   >
                                     <Trash2 className="h-5 w-5" />
                                   </Button>

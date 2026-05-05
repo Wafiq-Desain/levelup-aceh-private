@@ -11,10 +11,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Plus, Trash, Save, ChevronLeft, LayoutList, FilePlus, Pencil, Image as ImageIcon, X } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useFirestore } from "@/firebase";
-import { collection, getDocs, query, orderBy, doc } from "firebase/firestore";
+import { collection, getDocs, query, orderBy, doc, getDoc } from "firebase/firestore";
 import { errorEmitter } from "@/firebase/error-emitter";
 import { FirestorePermissionError } from "@/firebase/errors";
-import { setDocumentNonBlocking } from "@/firebase/non-blocking-updates";
+import { setDocumentNonBlocking, deleteDocumentNonBlocking } from "@/firebase/non-blocking-updates";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -31,6 +31,7 @@ export default function AdminExamsPage() {
 
   // Form State
   const [editingExamId, setEditingExamId] = useState<string | null>(null);
+  const [initialQuestionIds, setInitialQuestionIds] = useState<string[]>([]);
   const [title, setTitle] = useState("");
   const [duration, setDuration] = useState("60");
   const [questions, setQuestions] = useState<any[]>([
@@ -64,14 +65,24 @@ export default function AdminExamsPage() {
     setEditingExamId(exam.id);
     setTitle(exam.title);
     setDuration(String(exam.durationMinutes));
+    setInitialQuestionIds(exam.questionIds || []);
     
     setLoading(true);
     const q = query(collection(db, "exams", exam.id, "questions"), orderBy("createdAt", "asc"));
     getDocs(q)
       .then(qSnap => {
         const qList = qSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        if (qList.length > 0) {
-          setQuestions(qList);
+        
+        // Ensure we follow the order in questionIds
+        let orderedList: any[] = [];
+        if (exam.questionIds && exam.questionIds.length > 0) {
+          orderedList = exam.questionIds.map((id: string) => qList.find(q => q.id === id)).filter(Boolean);
+        } else {
+          orderedList = qList;
+        }
+
+        if (orderedList.length > 0) {
+          setQuestions(orderedList);
         } else {
           setQuestions([{ questionText: "", options: ["", "", "", "", ""], correctAnswerIndex: 0, difficultyLevel: "medium", imageUrl: "" }]);
         }
@@ -90,6 +101,7 @@ export default function AdminExamsPage() {
 
   const resetForm = () => {
     setEditingExamId(null);
+    setInitialQuestionIds([]);
     setTitle("");
     setDuration("60");
     setQuestions([{ questionText: "", options: ["", "", "", "", ""], correctAnswerIndex: 0, difficultyLevel: "medium", imageUrl: "" }]);
@@ -156,11 +168,11 @@ export default function AdminExamsPage() {
       setDocumentNonBlocking(examRef, newExamData, { merge: true });
     }
 
-    const questionIdsList: string[] = [];
+    const currentQuestionIds: string[] = [];
     questions.forEach((q) => {
       const qId = q.id || doc(collection(db, "exams", examRef.id, "questions")).id;
       const qRef = doc(db, "exams", examRef.id, "questions", qId);
-      questionIdsList.push(qId);
+      currentQuestionIds.push(qId);
       
       setDocumentNonBlocking(qRef, {
         id: qId,
@@ -175,9 +187,19 @@ export default function AdminExamsPage() {
       }, { merge: true });
     });
 
-    setDocumentNonBlocking(examRef, { questionIds: questionIdsList }, { merge: true });
+    // Cleanup: Delete questions that are no longer part of this exam
+    if (editingExamId) {
+      initialQuestionIds.forEach(oldId => {
+        if (!currentQuestionIds.includes(oldId)) {
+          const oldQRef = doc(db, "exams", editingExamId, "questions", oldId);
+          deleteDocumentNonBlocking(oldQRef);
+        }
+      });
+    }
 
-    toast({ title: "Berhasil", description: "Paket ujian telah disimpan." });
+    setDocumentNonBlocking(examRef, { questionIds: currentQuestionIds }, { merge: true });
+
+    toast({ title: "Berhasil", description: "Paket ujian telah diperbarui dan disinkronkan." });
     setTimeout(() => {
       resetForm();
       setActiveTab("list");
@@ -195,7 +217,7 @@ export default function AdminExamsPage() {
               <Button variant="ghost" size="icon" onClick={() => router.push('/dashboard')}>
                 <ChevronLeft className="h-5 w-5" />
               </Button>
-              <h1 className="text-xl font-bold">{editingExamId ? "Mode Edit Ujian" : "Manajemen Ujian"}</h1>
+              <h1 className="text-xl font-bold">{editingExamId ? "Edit Paket Ujian" : "Manajemen Ujian"}</h1>
             </div>
             <div className="flex gap-2">
               {editingExamId && (
@@ -226,7 +248,7 @@ export default function AdminExamsPage() {
                 <LayoutList className="h-4 w-4" /> Daftar Ujian
               </TabsTrigger>
               <TabsTrigger value="new" className="flex items-center gap-2">
-                <FilePlus className="h-4 w-4" /> {editingExamId ? "Edit Ujian" : "Ujian Baru"}
+                <FilePlus className="h-4 w-4" /> {editingExamId ? "Edit Soal" : "Ujian Baru"}
               </TabsTrigger>
             </TabsList>
 
@@ -247,7 +269,7 @@ export default function AdminExamsPage() {
                     <Card key={exam.id} className="hover:shadow-md transition-all border-l-4 border-primary">
                       <CardHeader>
                         <CardTitle className="text-lg">{exam.title}</CardTitle>
-                        <CardDescription>{exam.durationMinutes} Menit • Dibuat {new Date(exam.createdAt).toLocaleDateString()}</CardDescription>
+                        <CardDescription>{exam.durationMinutes} Menit • {exam.questionIds?.length || 0} Soal</CardDescription>
                       </CardHeader>
                       <CardFooter className="flex justify-end gap-2 border-t pt-4 bg-muted/5">
                         <Button variant="outline" size="sm" onClick={() => router.push(`/ujian/${exam.id}`)}>

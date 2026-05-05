@@ -118,16 +118,17 @@ export default function UjianPage() {
           const qSnap = await getDocs(query(questionsRef, orderBy("createdAt", "asc")));
           const qList = qSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
           
-          // Filter questions based on the questionIds array in the exam document
+          // CRITICAL: Filter questions based on the questionIds array in the exam document
           // This ensures that deleted questions don't show up
+          let orderedQuestions = [];
           if (examData.questionIds && examData.questionIds.length > 0) {
-            const filtered = examData.questionIds.map((qId: string) => 
+            orderedQuestions = examData.questionIds.map((qId: string) => 
               qList.find(q => q.id === qId)
             ).filter(Boolean);
-            setQuestions(filtered);
           } else {
-            setQuestions(qList);
+            orderedQuestions = qList;
           }
+          setQuestions(orderedQuestions);
           
           setTimeLeft(examData.durationMinutes ? examData.durationMinutes * 60 : 3600);
 
@@ -358,8 +359,8 @@ export default function UjianPage() {
                 <CardContent className="pt-6">
                   <div className="grid grid-cols-5 gap-3">
                     {questions.map((q, i) => {
-                      const hasAnswer = !!answers[q.id]?.choice;
-                      const isFlagged = answers[q.id]?.isFlagged;
+                      const hasAnswer = !!answers[q?.id]?.choice;
+                      const isFlagged = answers[q?.id]?.isFlagged;
                       const isActive = currentIndex === i;
                       return (
                         <button key={i} onClick={() => { setCurrentIndex(i); saveIndex(i); }} className={cn(
