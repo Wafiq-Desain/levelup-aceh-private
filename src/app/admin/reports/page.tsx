@@ -9,9 +9,7 @@ import {
   Download, 
   Search, 
   FileText, 
-  Calendar, 
   TrendingUp, 
-  User as UserIcon, 
   AlertTriangle, 
   Info, 
   Trash2,
@@ -28,7 +26,6 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
-import { deleteDocumentNonBlocking } from "@/firebase/non-blocking-updates";
 
 export default function AdminReportsPage() {
   const router = useRouter();
@@ -51,22 +48,38 @@ export default function AdminReportsPage() {
       // Fetch all profiles to map display names
       const usersSnap = await getDocs(collection(db, "userProfiles"));
       const uMap: Record<string, any> = {};
-      usersSnap.forEach(doc => uMap[doc.id] = doc.data());
+      usersSnap.forEach(d => {
+        uMap[d.id] = d.data();
+      });
       setUsersMap(uMap);
 
       const examsSnap = await getDocs(collection(db, "exams"));
       const eMap: Record<string, any> = {};
-      examsSnap.forEach(doc => eMap[doc.id] = doc.data());
+      examsSnap.forEach(d => {
+        eMap[d.id] = d.data();
+      });
       setExamsMap(eMap);
 
       const resultsQuery = query(collectionGroup(db, "results"), orderBy("submissionTime", "desc"));
       const resultsSnap = await getDocs(resultsQuery);
-      const resultsList = resultsSnap.docs.map(doc => ({ 
-        id: doc.id, 
-        ...doc.data(),
-        // Extract userId from path if possible, or use studentId field
-        path: doc.ref.path 
-      }));
+      
+      const resultsList = resultsSnap.docs.map(d => {
+        const data = d.data();
+        const path = d.ref.path;
+        const pathParts = path.split('/');
+        // Path is users/{userId}/results/{resultId}
+        // So userId is at index 1
+        const studentIdFromPath = pathParts[1];
+        
+        return { 
+          id: d.id, 
+          ...data,
+          // Prioritize studentId from field, fallback to path extraction
+          studentId: data.studentId || studentIdFromPath,
+          fullPath: path 
+        };
+      });
+      
       setResults(resultsList);
       setLoading(false);
     } catch (err: any) {
@@ -89,14 +102,26 @@ export default function AdminReportsPage() {
     fetchData();
   }, [db]);
 
-  const handleDeleteResult = (result: any) => {
-    if (confirm(`Apakah Anda yakin ingin menghapus nilai ${usersMap[result.studentId]?.displayName || 'siswa'}? Tindakan ini permanen.`)) {
-      const resultRef = doc(db, result.path);
-      deleteDocumentNonBlocking(resultRef);
-      setResults(results.filter(r => r.id !== result.id));
+  const handleDeleteResult = async (result: any) => {
+    const studentName = usersMap[result.studentId]?.displayName || 'siswa';
+    if (!confirm(`Apakah Anda yakin ingin menghapus nilai ${studentName}? Tindakan ini permanen.`)) {
+      return;
+    }
+
+    try {
+      const resultRef = doc(db, result.fullPath);
+      await deleteDoc(resultRef);
+      setResults(results.filter(r => r.fullPath !== result.fullPath));
       toast({
         title: "Dihapus",
-        description: "Hasil ujian siswa telah berhasil dihapus."
+        description: `Hasil ujian ${studentName} telah berhasil dihapus.`
+      });
+    } catch (err: any) {
+      console.error("Delete error:", err);
+      toast({
+        variant: "destructive",
+        title: "Gagal Menghapus",
+        description: "Terjadi kesalahan saat mencoba menghapus data."
       });
     }
   };
@@ -237,7 +262,7 @@ export default function AdminReportsPage() {
                             const warnings = res.antiCheatWarningCount || 0;
 
                             return (
-                              <TableRow key={res.id} className="hover:bg-muted/30">
+                              <TableRow key={res.fullPath} className="hover:bg-muted/30">
                                 <TableCell>
                                   <div className="flex flex-col">
                                     <span className="font-bold">{user?.displayName || "Siswa"}</span>
@@ -256,7 +281,7 @@ export default function AdminReportsPage() {
                                 <TableCell className="text-center">
                                   <Badge 
                                     className={cn(
-                                      "font-black text-sm",
+                                      "font-black text-sm text-white",
                                       res.totalScore >= 70 ? "bg-green-600" : "bg-red-600"
                                     )}
                                   >
