@@ -14,7 +14,8 @@ import {
   Trash2,
   ShieldAlert,
   RefreshCw,
-  User as UserIcon
+  User as UserIcon,
+  GraduationCap
 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 import { useFirestore } from "@/firebase";
@@ -46,7 +47,7 @@ export default function AdminReportsPage() {
     setIndexMissing(false);
     
     try {
-      // 1. Fetch User Profiles first to map IDs to Names
+      // 1. Fetch User Profiles first to map IDs to Names and Classes
       const usersSnap = await getDocs(collection(db, "userProfiles"));
       const uMap: Record<string, any> = {};
       usersSnap.forEach(d => {
@@ -70,13 +71,15 @@ export default function AdminReportsPage() {
         const data = d.data();
         const path = d.ref.path;
         const pathParts = path.split('/');
-        // Extract studentId from path: users/{userId}/results/{resultId}
-        const studentIdFromPath = pathParts[pathParts.indexOf('users') + 1];
+        
+        // Accurate Extraction of Student ID from path: users/{userId}/results/{resultId}
+        const usersIndex = pathParts.indexOf('users');
+        const studentIdFromPath = usersIndex !== -1 ? pathParts[usersIndex + 1] : data.studentId;
         
         return { 
           id: d.id, 
           ...data,
-          studentId: studentIdFromPath || data.studentId,
+          studentId: studentIdFromPath,
           fullPath: path 
         };
       });
@@ -106,12 +109,12 @@ export default function AdminReportsPage() {
       return;
     }
 
-    // Optimistic UI update
-    setResults(prev => prev.filter(r => r.fullPath !== res.fullPath));
-
     // Ensure we use the correct absolute document reference from the fullPath
     const resultRef = doc(db, res.fullPath);
     deleteDocumentNonBlocking(resultRef);
+
+    // Optimistic UI update
+    setResults(prev => prev.filter(r => r.fullPath !== res.fullPath));
     
     toast({
       title: "Berhasil Dihapus",
@@ -123,11 +126,11 @@ export default function AdminReportsPage() {
     const student = usersMap[res.studentId];
     const studentName = (student?.displayName || "Siswa Tanpa Nama").toLowerCase();
     const studentEmail = (student?.email || "").toLowerCase();
-    const studentId = (res.studentId || "").toLowerCase();
+    const studentClass = (student?.class || "").toLowerCase();
     const exam = examsMap[res.examId];
     const examTitle = (exam?.title || "Ujian").toLowerCase();
     
-    const searchString = `${studentName} ${studentEmail} ${studentId} ${examTitle}`;
+    const searchString = `${studentName} ${studentEmail} ${studentClass} ${examTitle}`;
     return searchString.includes(searchTerm.toLowerCase());
   });
 
@@ -167,7 +170,7 @@ export default function AdminReportsPage() {
               <CardContent className="pt-6 text-center space-y-4">
                 <AlertTriangle className="h-12 w-12 text-destructive mx-auto" />
                 <h2 className="text-xl font-bold text-destructive">Akses Ditolak</h2>
-                <p className="text-muted-foreground">Pastikan UID Anda terdaftar di koleksi adminUsers.</p>
+                <p className="text-muted-foreground">Pastikan Anda memiliki akses administrator.</p>
                 <Button variant="outline" onClick={fetchData}>Muat Ulang</Button>
               </CardContent>
             </Card>
@@ -204,12 +207,12 @@ export default function AdminReportsPage() {
                 <CardHeader className="flex flex-col md:flex-row items-center justify-between space-y-4 md:space-y-0 bg-muted/10 border-b">
                   <div>
                     <CardTitle className="text-lg">Monitoring Nilai Siswa</CardTitle>
-                    <CardDescription>Data identitas diambil dari profil registrasi siswa.</CardDescription>
+                    <CardDescription>Data identitas dan kelas diambil dari profil pendaftaran siswa.</CardDescription>
                   </div>
                   <div className="relative w-full md:w-80">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input 
-                      placeholder="Cari Nama, Email atau ID..." 
+                      placeholder="Cari Nama, Kelas atau Ujian..." 
                       className="pl-9 bg-white"
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
@@ -244,9 +247,16 @@ export default function AdminReportsPage() {
                               <TableRow key={res.fullPath} className="hover:bg-muted/10 border-b">
                                 <TableCell>
                                   <div className="flex flex-col">
-                                    <span className="font-bold text-primary text-base uppercase">
-                                      {userProfile?.displayName || "Siswa Tanpa Nama"}
-                                    </span>
+                                    <div className="flex items-center gap-2">
+                                      <span className="font-bold text-primary text-base uppercase">
+                                        {userProfile?.displayName || "Siswa Tanpa Nama"}
+                                      </span>
+                                      {userProfile?.class && (
+                                        <Badge variant="outline" className="text-[9px] bg-blue-50 text-blue-600 border-blue-200">
+                                          {userProfile.class}
+                                        </Badge>
+                                      )}
+                                    </div>
                                     <span className="text-[10px] text-muted-foreground font-mono bg-muted/80 px-1 rounded w-fit mt-1">
                                       ID: {res.studentId}
                                     </span>

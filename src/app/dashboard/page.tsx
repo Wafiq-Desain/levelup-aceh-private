@@ -6,7 +6,7 @@ import { useAppAuth } from "@/contexts/auth-context";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent, CardDescription, CardFooter } from "@/components/ui/card";
 import { useRouter } from "next/navigation";
-import { BookOpen, LogOut, Settings, Award, User, ListChecks, LayoutDashboard, ShieldCheck, TrendingUp, CheckCircle, AlertCircle, Users, Info, MapPin, Phone } from "lucide-react";
+import { BookOpen, LogOut, Settings, Award, User, ListChecks, LayoutDashboard, ShieldCheck, TrendingUp, CheckCircle, AlertCircle, Users, Info, MapPin, Phone, GraduationCap } from "lucide-react";
 import { useAuth, useFirestore } from "@/firebase";
 import { signOut } from "firebase/auth";
 import { useEffect, useState } from "react";
@@ -152,7 +152,7 @@ export default function DashboardPage() {
             <div className="flex items-center gap-4">
               <div className="hidden sm:flex items-center gap-2 mr-4 text-sm font-medium bg-black/10 px-3 py-1.5 rounded-full border border-white/20">
                 <User className="h-4 w-4 text-secondary" />
-                <span>{userProfile?.displayName || user?.displayName || user?.email}</span>
+                <span className="truncate max-w-[150px]">{userProfile?.displayName || user?.displayName || user?.email}</span>
                 <span className="bg-secondary text-secondary-foreground px-2 py-0.5 rounded text-[10px] uppercase font-bold ml-2">
                   {role}
                 </span>
@@ -175,7 +175,7 @@ export default function DashboardPage() {
                     <Info className="h-6 w-6 text-amber-600 mt-1 shrink-0" />
                     <div className="space-y-1">
                       <h3 className="font-bold text-amber-900">Biodata Belum Lengkap</h3>
-                      <p className="text-sm text-amber-800">Silakan lengkapi biodata Anda (Sekolah & No WA) agar hasil ujian dapat diproses secara resmi.</p>
+                      <p className="text-sm text-amber-800">Silakan lengkapi biodata Anda (Kelas, Sekolah & No WA) agar hasil ujian dapat diproses secara resmi.</p>
                       <Button variant="link" className="p-0 h-auto text-amber-700 font-bold underline" onClick={() => setShowBiodataDialog(true)}>Lengkapi Sekarang</Button>
                     </div>
                   </CardContent>
@@ -364,12 +364,12 @@ export default function DashboardPage() {
                 <User className="h-5 w-5" /> Lengkapi Biodata Siswa
               </DialogTitle>
               <DialogDescription>
-                Informasi ini diperlukan satu kali saja agar identitas Anda tercatat dalam sistem laporan nilai.
+                Informasi ini diperlukan agar profil Anda tercatat dengan lengkap di sistem kami.
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
               <div className="space-y-2">
-                <Label>Pilih Kelas</Label>
+                <Label className="flex items-center gap-2"><GraduationCap className="h-4 w-4" /> Pilih Kelas</Label>
                 <Select value={studentClass} onValueChange={setStudentClass}>
                   <SelectTrigger>
                     <SelectValue placeholder="Pilih jenjang kelas" />
