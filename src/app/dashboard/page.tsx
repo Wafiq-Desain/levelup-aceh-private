@@ -89,7 +89,6 @@ export default function DashboardPage() {
   };
 
   const isProfileComplete = () => {
-    // Strict Check: Name, Class, School, Phone must all exist
     const hasName = userProfile?.displayName || user?.displayName;
     return !!(hasName && userProfile?.class && userProfile?.schoolName && userProfile?.phoneNumber);
   };
@@ -171,7 +170,6 @@ export default function DashboardPage() {
         <main className="container mx-auto px-4 py-8">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             <div className="lg:col-span-2 space-y-8">
-              {/* Profile Completion Alert */}
               {!loading && !isProfileComplete() && role === 'student' && (
                 <Card className="bg-amber-50 border-amber-200 shadow-sm border-l-4 border-l-amber-500">
                   <CardContent className="pt-6 flex items-start gap-4">
@@ -185,7 +183,6 @@ export default function DashboardPage() {
                 </Card>
               )}
 
-              {/* Admin Quick Access */}
               {role === 'admin' && (
                 <section className="bg-primary/5 p-6 rounded-xl border border-primary/20 shadow-inner">
                   <h2 className="text-2xl font-bold mb-4 flex items-center gap-2 text-primary">
@@ -239,7 +236,6 @@ export default function DashboardPage() {
                 </section>
               )}
 
-              {/* Student Exams List */}
               <section>
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-2xl font-bold flex items-center gap-2">
@@ -313,7 +309,6 @@ export default function DashboardPage() {
               </section>
             </div>
 
-            {/* Sidebar Stats */}
             <div className="space-y-6">
               <Card className="bg-white shadow-lg overflow-hidden border-none">
                 <div className="h-2 bg-primary" />
