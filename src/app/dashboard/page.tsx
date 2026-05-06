@@ -8,7 +8,20 @@ import { Card, CardHeader, CardTitle, CardContent, CardDescription, CardFooter }
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { useRouter } from "next/navigation";
-import { BookOpen, LogOut, Settings, Award, User, ListChecks, LayoutDashboard, ShieldCheck, CheckCircle, AlertCircle, Users, Info, MapPin, Phone, GraduationCap } from "lucide-react";
+import { 
+  BookOpen, 
+  LogOut, 
+  Award, 
+  User, 
+  ListChecks, 
+  LayoutDashboard, 
+  ShieldCheck, 
+  CheckCircle, 
+  AlertCircle, 
+  Users, 
+  FileText,
+  TrendingUp
+} from "lucide-react";
 import { useAuth, useFirestore } from "@/firebase";
 import { signOut } from "firebase/auth";
 import { useEffect, useState, useCallback } from "react";
@@ -110,18 +123,18 @@ export default function DashboardPage() {
         </header>
 
         <main className="container mx-auto px-4 py-8">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            <div className="lg:col-span-2 space-y-8">
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+            <div className="lg:col-span-3 space-y-8">
               {role === 'admin' && (
                 <section className="bg-primary/5 p-4 md:p-6 rounded-2xl border border-primary/10">
                   <h2 className="text-xl font-bold mb-4 flex items-center gap-2 text-primary">
                     <ShieldCheck className="h-6 w-6" /> Admin Dashboard
                   </h2>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <Card className="hover:shadow-md transition-all border-none shadow-sm">
                       <CardHeader className="pb-2">
-                        <CardTitle className="text-base flex items-center gap-2">
-                          <ListChecks className="h-4 w-4 text-primary" /> Bank Soal
+                        <CardTitle className="text-base flex items-center gap-2 text-primary">
+                          <ListChecks className="h-4 w-4" /> Bank Soal
                         </CardTitle>
                         <CardDescription className="text-[11px]">Kelola paket ujian & pertanyaan.</CardDescription>
                       </CardHeader>
@@ -129,12 +142,21 @@ export default function DashboardPage() {
                     </Card>
                     <Card className="hover:shadow-md transition-all border-none shadow-sm">
                       <CardHeader className="pb-2">
-                        <CardTitle className="text-base flex items-center gap-2">
-                          <Users className="h-4 w-4 text-blue-500" /> Siswa ({totalStudents})
+                        <CardTitle className="text-base flex items-center gap-2 text-blue-600">
+                          <Users className="h-4 w-4" /> Siswa ({totalStudents})
                         </CardTitle>
                         <CardDescription className="text-[11px]">Lihat profil & nilai individu.</CardDescription>
                       </CardHeader>
                       <CardFooter><Button size="sm" className="w-full bg-blue-600 text-white" onClick={() => router.push('/admin/students')}>Buka</Button></CardFooter>
+                    </Card>
+                    <Card className="hover:shadow-md transition-all border-none shadow-sm">
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-base flex items-center gap-2 text-green-600">
+                          <FileText className="h-4 w-4" /> Laporan Hasil
+                        </CardTitle>
+                        <CardDescription className="text-[11px]">Monitoring riwayat & pelanggaran.</CardDescription>
+                      </CardHeader>
+                      <CardFooter><Button size="sm" className="w-full bg-green-600 text-white" onClick={() => router.push('/admin/reports')}>Lihat Laporan</Button></CardFooter>
                     </Card>
                   </div>
                 </section>
