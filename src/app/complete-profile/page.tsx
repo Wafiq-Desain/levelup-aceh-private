@@ -50,8 +50,17 @@ export default function CompleteProfilePage() {
           setBirthDate(data.birthDate || "");
           setGender(data.gender || "");
           
-          // If already complete, redirect to dashboard
-          if (data.displayName && data.class && data.schoolName && data.phoneNumber && data.birthDate && data.gender) {
+          // Cek apakah data sudah benar-benar lengkap
+          const isComplete = !!(
+            data.displayName && 
+            data.class && 
+            data.schoolName && 
+            data.phoneNumber && 
+            data.birthDate && 
+            data.gender
+          );
+
+          if (isComplete) {
             router.replace("/dashboard");
           }
         }
@@ -65,7 +74,7 @@ export default function CompleteProfilePage() {
     fetchProfile();
   }, [user, db, router]);
 
-  const isMan2 = schoolName.toLowerCase().includes("man 2");
+  const isMan2 = (schoolName || "").toLowerCase().includes("man 2");
 
   const handleSave = () => {
     if (!name || !studentClass || !schoolName || !phoneNumber || !birthDate || !gender) {
@@ -95,9 +104,10 @@ export default function CompleteProfilePage() {
     
     toast({ title: "Profil Disimpan", description: "Terima kasih telah melengkapi data diri Anda." });
     
+    // Redirect menggunakan replace untuk mencegah user kembali ke halaman biodata via back button
     setTimeout(() => {
       setSaving(false);
-      router.push("/dashboard");
+      router.replace("/dashboard");
     }, 1500);
   };
 

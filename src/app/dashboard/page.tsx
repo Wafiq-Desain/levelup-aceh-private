@@ -52,12 +52,22 @@ export default function DashboardPage() {
         const data = profileSnap.data();
         setUserProfile(data);
         
-        const isComplete = !!(data.displayName && data.class && data.schoolName && data.phoneNumber && data.birthDate && data.gender);
+        // Pengecekan kelengkapan biodata yang lebih aman
+        const isComplete = !!(
+          data.displayName && 
+          data.class && 
+          data.schoolName && 
+          data.phoneNumber && 
+          data.birthDate && 
+          data.gender
+        );
+
         if (!isComplete && role === 'student') {
           router.replace("/complete-profile");
           return;
         }
       } else if (role === 'student') {
+        // Jika dokumen profil belum ada sama sekali
         router.replace("/complete-profile");
         return;
       }
@@ -221,7 +231,7 @@ export default function DashboardPage() {
                   </div>
                   <div className="flex flex-col gap-1">
                     <span className="text-[10px] uppercase font-bold text-muted-foreground">Kelas & Sekolah</span>
-                    <span className="text-sm font-medium">{userProfile?.class} - {userProfile?.schoolName}</span>
+                    <span className="text-sm font-medium">{userProfile?.class || "-"} - {userProfile?.schoolName || "-"}</span>
                   </div>
                   <Separator />
                   <div className="grid grid-cols-2 gap-4">

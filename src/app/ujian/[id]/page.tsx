@@ -57,7 +57,6 @@ export default function UjianPage() {
   const hasSubmitted = useRef(false);
   const wakeLockRef = useRef<any>(null);
 
-  // Fitur Wake Lock untuk mencegah HP mati/tidur otomatis
   const requestWakeLock = async () => {
     try {
       if ('wakeLock' in navigator) {
@@ -82,7 +81,6 @@ export default function UjianPage() {
     };
   }, []);
 
-  // Security: Prevent Right Click, Selection, and Navigation
   useEffect(() => {
     const preventDefault = (e: Event) => e.preventDefault();
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
@@ -177,7 +175,6 @@ export default function UjianPage() {
     }
   }, [user, examId, questions, answers, db, router, toast]);
 
-  // Anti-Cheat
   useEffect(() => {
     if (loading || isSubmitting || attemptLimitReached) return;
     
@@ -200,7 +197,6 @@ export default function UjianPage() {
     };
   }, [handleSubmit, loading, isSubmitting, attemptLimitReached]);
 
-  // Fetch Data & strict check
   useEffect(() => {
     const fetchData = async () => {
       if (!examId || !user) return;
@@ -209,7 +205,21 @@ export default function UjianPage() {
 
         const profileSnap = await getDoc(doc(db, "userProfiles", user.uid));
         const profile = profileSnap.data();
-        const isComplete = profile?.displayName && profile?.class && profile?.schoolName && profile?.phoneNumber;
+        
+        // Pengecekan keamanan jika profil tidak ditemukan
+        if (!profileSnap.exists()) {
+          router.replace('/complete-profile');
+          return;
+        }
+
+        const isComplete = !!(
+          profile?.displayName && 
+          profile?.class && 
+          profile?.schoolName && 
+          profile?.phoneNumber &&
+          profile?.birthDate &&
+          profile?.gender
+        );
 
         if (!isComplete) {
             router.replace('/complete-profile');
@@ -247,7 +257,6 @@ export default function UjianPage() {
     fetchData();
   }, [examId, user, db, router]);
 
-  // Timer
   useEffect(() => {
     if (loading || isSubmitting || attemptLimitReached) return;
     const interval = setInterval(() => {
@@ -264,7 +273,10 @@ export default function UjianPage() {
   }, [loading, isSubmitting, attemptLimitReached, handleSubmit]);
 
   const handleSelectAnswer = (value: string) => {
-    const qId = questions[currentIndex].id;
+    if (hasSubmitted.current) return;
+    const qId = questions[currentIndex]?.id;
+    if (!qId) return;
+
     setAnswers(prev => ({ ...prev, [qId]: { ...prev[qId], choice: value } }));
     
     const answerRef = doc(db, "users", user!.uid, "examSessions", examId as string, "examAnswers", qId);
@@ -297,7 +309,6 @@ export default function UjianPage() {
   return (
     <ProtectedRoute>
       <div className={cn("min-h-screen bg-muted/20 flex flex-col transition-all duration-500", isBlurred && "blur-3xl grayscale pointer-events-none")}>
-        {/* Header Responsive */}
         <header className="sticky top-0 z-50 bg-white border-b shadow-sm h-14 md:h-16 flex items-center">
           <div className="container mx-auto px-4 flex items-center justify-between">
             <div className="flex flex-col min-w-0">
@@ -320,10 +331,9 @@ export default function UjianPage() {
           </div>
         </header>
 
-        <Progress value={((currentIndex + 1) / questions.length) * 100} className="h-1 rounded-none bg-muted" />
+        <Progress value={((currentIndex + 1) / (questions.length || 1)) * 100} className="h-1 rounded-none bg-muted" />
 
         <main className="flex-1 container mx-auto px-4 py-4 md:py-8 flex flex-col lg:flex-row gap-6">
-          {/* Navigation Soal - Mobile: Top Scrollable, Desktop: Sidebar */}
           <aside className="w-full lg:w-1/4">
             <Card className="shadow-sm border-none bg-white">
               <CardHeader className="py-3 px-4 bg-muted/10 border-b">
@@ -353,7 +363,6 @@ export default function UjianPage() {
             </Card>
           </aside>
 
-          {/* Question Display */}
           <section className="flex-1 flex flex-col gap-4">
             <Card className="border-none shadow-lg overflow-hidden flex-1 bg-white">
               <CardHeader className="p-5 md:p-8 border-b">
@@ -363,8 +372,8 @@ export default function UjianPage() {
                     variant="ghost" 
                     size="sm" 
                     onClick={() => {
-                      const qId = currentQ.id;
-                      setAnswers(prev => ({ ...prev, [qId]: { ...prev[qId], isFlagged: !prev[qId]?.isFlagged } }));
+                      const qId = currentQ?.id;
+                      if (qId) setAnswers(prev => ({ ...prev, [qId]: { ...prev[qId], isFlagged: !prev[qId]?.isFlagged } }));
                     }}
                     className={cn("h-8 text-[10px] font-bold gap-1", answers[currentQ?.id]?.isFlagged ? "bg-amber-100 text-amber-700" : "text-muted-foreground")}
                   >
