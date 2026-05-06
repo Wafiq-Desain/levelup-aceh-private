@@ -20,7 +20,8 @@ import {
   AlertCircle, 
   Users, 
   FileText,
-  TrendingUp
+  TrendingUp,
+  Trophy
 } from "lucide-react";
 import { useAuth, useFirestore } from "@/firebase";
 import { signOut } from "firebase/auth";
@@ -125,6 +126,9 @@ export default function DashboardPage() {
               <h1 className="text-lg md:text-xl font-bold">Level Up Aceh</h1>
             </div>
             <div className="flex items-center gap-3">
+              <Button variant="ghost" size="sm" onClick={() => router.push('/leaderboard')} className="text-white hover:bg-white/10">
+                <Trophy className="h-4 w-4 mr-2 text-secondary" /> <span className="hidden sm:inline">Peringkat</span>
+              </Button>
               <Button variant="ghost" size="sm" onClick={handleSignOut} className="text-xs text-white hover:bg-white/10">
                 <LogOut className="h-4 w-4 mr-2" /> <span className="hidden sm:inline">Keluar</span>
               </Button>
@@ -173,9 +177,14 @@ export default function DashboardPage() {
               )}
 
               <section>
-                <h2 className="text-xl font-bold mb-6 flex items-center gap-2">
-                  <BookOpen className="text-primary h-6 w-6" /> Ujian Tersedia
-                </h2>
+                <div className="flex items-center justify-between mb-6">
+                  <h2 className="text-xl font-bold flex items-center gap-2">
+                    <BookOpen className="text-primary h-6 w-6" /> Ujian Tersedia
+                  </h2>
+                  <Button variant="outline" size="sm" onClick={() => router.push('/leaderboard')} className="border-secondary text-primary font-bold">
+                    <Trophy className="h-4 w-4 mr-2 text-secondary" /> Lihat Peringkat
+                  </Button>
+                </div>
                 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                   {exams.map((exam) => {

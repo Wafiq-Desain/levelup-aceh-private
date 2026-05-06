@@ -35,7 +35,7 @@ service cloud.firestore {
     }
 
     match /userProfiles/{userId} {
-      allow get: if isOwner(userId) || isAdmin();
+      allow get: if isSignedIn();
       allow list: if isAdmin();
       allow update: if isExistingOwner(userId);
       allow create: if isOwner(userId) && request.resource.data.id == userId;
@@ -52,10 +52,11 @@ service cloud.firestore {
       }
     }
 
-    // Collection Group rules for Admin Reports (Must match the collection name exactly)
+    // Collection Group rules for Leaderboard and Reports
     match /{path=**}/results/{resultId} {
-      allow list: if isAdmin();
-      // To allow students to get their own results via collection group (if ever needed)
+      // Allow students to see the leaderboard (list all results)
+      allow list: if isSignedIn();
+      // To allow students to get their own results via collection group
       allow get: if isAdmin() || (isSignedIn() && request.auth.uid in path);
     }
     
@@ -88,7 +89,6 @@ service cloud.firestore {
 
       match /results/{resultId} {
         allow get, list: if isOwner(userId) || isAdmin();
-        // Students need to be able to create AND update their results (e.g. re-taking an exam)
         allow create, update: if isOwner(userId); 
         allow delete: if isAdmin();
 
