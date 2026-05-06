@@ -9,7 +9,7 @@ import { useRouter } from "next/navigation";
 import { BookOpen, LogOut, Settings, Award, User, ListChecks, LayoutDashboard, ShieldCheck, TrendingUp, CheckCircle, AlertCircle, Users, Info, MapPin, Phone, GraduationCap } from "lucide-react";
 import { useAuth, useFirestore } from "@/firebase";
 import { signOut } from "firebase/auth";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { collection, query, getDocs, orderBy, where, doc, getDoc } from "firebase/firestore";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -41,46 +41,47 @@ export default function DashboardPage() {
   const [schoolName, setSchoolName] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
 
-  useEffect(() => {
-    const fetchDashboardData = async () => {
-      if (!user) return;
-      try {
-        setLoading(true);
-        
-        // Fetch Profile
-        const profileSnap = await getDoc(doc(db, "userProfiles", user.uid));
-        if (profileSnap.exists()) {
-          const data = profileSnap.data();
-          setUserProfile(data);
-          setStudentClass(data.class || "");
-          setSchoolName(data.schoolName || "");
-          setPhoneNumber(data.phoneNumber || "");
-        }
-
-        // Fetch Exams
-        const qExams = query(collection(db, "exams"));
-        const examsSnapshot = await getDocs(qExams);
-        setExams(examsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-
-        // Fetch User Results
-        const qResults = query(collection(db, "users", user.uid, "results"), orderBy("submissionTime", "desc"));
-        const resultsSnapshot = await getDocs(qResults);
-        setUserResults(resultsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-
-        // Admin Stats: Total Students
-        if (role === 'admin') {
-          const qStudents = query(collection(db, "userProfiles"), where("role", "==", "student"));
-          const studentsSnapshot = await getDocs(qStudents);
-          setTotalStudents(studentsSnapshot.size);
-        }
-      } catch (err) {
-        console.error("Error fetching dashboard data:", err);
-      } finally {
-        setLoading(false);
+  const fetchDashboardData = useCallback(async () => {
+    if (!user) return;
+    try {
+      setLoading(true);
+      
+      // Fetch Profile
+      const profileSnap = await getDoc(doc(db, "userProfiles", user.uid));
+      if (profileSnap.exists()) {
+        const data = profileSnap.data();
+        setUserProfile(data);
+        setStudentClass(data.class || "");
+        setSchoolName(data.schoolName || "");
+        setPhoneNumber(data.phoneNumber || "");
       }
-    };
-    fetchDashboardData();
+
+      // Fetch Exams
+      const qExams = query(collection(db, "exams"));
+      const examsSnapshot = await getDocs(qExams);
+      setExams(examsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+
+      // Fetch User Results
+      const qResults = query(collection(db, "users", user.uid, "results"), orderBy("submissionTime", "desc"));
+      const resultsSnapshot = await getDocs(qResults);
+      setUserResults(resultsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+
+      // Admin Stats: Total Students
+      if (role === 'admin') {
+        const qStudents = query(collection(db, "userProfiles"), where("role", "==", "student"));
+        const studentsSnapshot = await getDocs(qStudents);
+        setTotalStudents(studentsSnapshot.size);
+      }
+    } catch (err) {
+      console.error("Error fetching dashboard data:", err);
+    } finally {
+      setLoading(false);
+    }
   }, [db, user, role]);
+
+  useEffect(() => {
+    fetchDashboardData();
+  }, [fetchDashboardData]);
 
   const handleSignOut = async () => {
     await signOut(auth);
@@ -88,7 +89,9 @@ export default function DashboardPage() {
   };
 
   const isProfileComplete = () => {
-    return userProfile?.class && userProfile?.schoolName && userProfile?.phoneNumber;
+    // Strict Check: Name, Class, School, Phone must all exist
+    const hasName = userProfile?.displayName || user?.displayName;
+    return !!(hasName && userProfile?.class && userProfile?.schoolName && userProfile?.phoneNumber);
   };
 
   const handleStartExam = (examId: string) => {
@@ -117,8 +120,8 @@ export default function DashboardPage() {
 
     setDocumentNonBlocking(profileRef, updatedData, { merge: true });
     
-    // Update local state
-    setUserProfile({ ...userProfile, ...updatedData });
+    // Update local state optimistically
+    setUserProfile((prev: any) => ({ ...prev, ...updatedData }));
     
     toast({ title: "Profil Diperbarui", description: "Sekarang Anda dapat memulai ujian." });
     

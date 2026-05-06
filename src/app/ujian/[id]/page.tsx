@@ -163,7 +163,7 @@ export default function UjianPage() {
   // Anti-Cheat: NO TOLERANCE (1 violation = Force Submit)
   useEffect(() => {
     const handleViolation = () => {
-      if (hasSubmitted.current) return;
+      if (hasSubmitted.current || loading || attemptLimitReached) return;
       setIsBlurred(true);
       handleSubmit(true);
     };
@@ -178,7 +178,7 @@ export default function UjianPage() {
       document.removeEventListener("visibilitychange", onVisibilityChange);
       window.removeEventListener("blur", onWindowBlur);
     };
-  }, [handleSubmit]);
+  }, [handleSubmit, loading, attemptLimitReached]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -186,6 +186,19 @@ export default function UjianPage() {
       try {
         setLoading(true);
 
+        // 1. Mandatory Biodata Check
+        const profileSnap = await getDoc(doc(db, "userProfiles", user.uid));
+        if (!profileSnap.exists() || !profileSnap.data().class || !profileSnap.data().schoolName) {
+            toast({
+                variant: "destructive",
+                title: "Biodata Belum Lengkap",
+                description: "Silakan lengkapi profil Anda di Dashboard sebelum memulai ujian."
+            });
+            router.push('/dashboard');
+            return;
+        }
+
+        // 2. Attempt Limit Check
         const resultsRef = collection(db, "users", user.uid, "results");
         const resultsQuery = query(resultsRef, where("examId", "==", examId));
         const resultsSnap = await getDocs(resultsQuery);
@@ -224,7 +237,7 @@ export default function UjianPage() {
       }
     };
     fetchData();
-  }, [examId, user, db]);
+  }, [examId, user, db, router, toast]);
 
   useEffect(() => {
     if (loading || isSubmitting || attemptLimitReached) return;
