@@ -12,14 +12,11 @@ import {
   getDocs,
   query,
   orderBy,
-  increment,
   where
 } from "firebase/firestore";
 import { useFirestore } from "@/firebase";
 import { 
-  setDocumentNonBlocking, 
-  updateDocumentNonBlocking, 
-  addDocumentNonBlocking 
+  setDocumentNonBlocking
 } from "@/firebase/non-blocking-updates";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -65,7 +62,7 @@ export default function UjianPage() {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       if (!hasSubmitted.current) {
         e.preventDefault();
-        e.returnValue = "Ujian sedang berlangsung. Keluar sekarang akan menghanguskan sesi ini.";
+        e.returnValue = "Ujian sedang berlangsung! Keluar atau refresh sekarang akan menghanguskan sesi pengerjaan Anda.";
       }
     };
 
@@ -80,7 +77,7 @@ export default function UjianPage() {
       toast({
         variant: "destructive",
         title: "Navigasi Dilarang!",
-        description: "Gunakan tombol selesai untuk mengakhiri ujian."
+        description: "Gunakan tombol selesai untuk mengakhiri ujian secara sah."
       });
     };
     window.addEventListener("popstate", handlePopState);
@@ -146,7 +143,7 @@ export default function UjianPage() {
 
       toast({ 
         title: isAuto ? "KECURANGAN TERDETEKSI!" : "Ujian Selesai!", 
-        description: isAuto ? "Anda terkeluar otomatis karena pindah tab/apps. Kuota percobaan berkurang." : "Hasil Anda telah disimpan.",
+        description: isAuto ? "Sesi dihentikan paksa karena Anda berpindah aplikasi/tab. Kuota berkurang." : "Hasil Anda telah disimpan.",
         variant: isAuto ? "destructive" : "default"
       });
       
@@ -186,24 +183,31 @@ export default function UjianPage() {
       try {
         setLoading(true);
 
-        // 1. Mandatory Biodata Check
+        // 1. Mandatory Biodata Check (Nama, Kelas, Sekolah, WA)
         const profileSnap = await getDoc(doc(db, "userProfiles", user.uid));
-        if (!profileSnap.exists() || !profileSnap.data().class || !profileSnap.data().schoolName) {
+        const profile = profileSnap.data();
+        const hasCompleteProfile = !!(
+          (profile?.displayName || user.displayName) && 
+          profile?.class && 
+          profile?.schoolName && 
+          profile?.phoneNumber
+        );
+
+        if (!profileSnap.exists() || !hasCompleteProfile) {
             toast({
                 variant: "destructive",
                 title: "Biodata Belum Lengkap",
-                description: "Silakan lengkapi profil Anda di Dashboard sebelum memulai ujian."
+                description: "Anda wajib melengkapi profil (Kelas, Sekolah, WA) sebelum memulai ujian."
             });
-            router.push('/dashboard');
+            router.replace('/dashboard');
             return;
         }
 
-        // 2. Attempt Limit Check
+        // 2. Attempt Limit Check (STRICT 2 ATTEMPTS)
         const resultsRef = collection(db, "users", user.uid, "results");
         const resultsQuery = query(resultsRef, where("examId", "==", examId));
         const resultsSnap = await getDocs(resultsQuery);
         
-        // STRICT 2 ATTEMPTS LIMIT
         if (resultsSnap.size >= 2) {
           setAttemptLimitReached(true);
           setLoading(false);
@@ -291,7 +295,7 @@ export default function UjianPage() {
             <AlertTriangle className="h-16 w-16 text-destructive mx-auto mb-4" />
             <CardTitle className="text-2xl font-bold">Batas Percobaan Habis</CardTitle>
             <p className="text-muted-foreground my-4">Anda sudah menggunakan maksimal 2 kali percobaan untuk ujian ini.</p>
-            <Button className="w-full h-12" onClick={() => router.push('/dashboard')}>Kembali ke Dashboard</Button>
+            <Button className="w-full h-12" onClick={() => router.replace('/dashboard')}>Kembali ke Dashboard</Button>
           </Card>
         </div>
       </ProtectedRoute>
@@ -303,13 +307,13 @@ export default function UjianPage() {
 
   return (
     <ProtectedRoute>
-      <div className={cn("min-h-screen bg-muted/30 transition-all", isBlurred && "blur-2xl grayscale pointer-events-none")}>
+      <div className={cn("min-h-screen bg-muted/30 transition-all", isBlurred && "blur-3xl grayscale pointer-events-none")}>
         <header className="sticky top-0 z-50 bg-white border-b shadow-sm">
           <div className="container mx-auto px-4 h-20 flex items-center justify-between">
             <div className="flex flex-col">
               <h2 className="text-xl font-bold text-primary truncate max-w-md">{exam?.title}</h2>
               <div className="flex items-center gap-2 text-[10px] text-destructive font-black uppercase">
-                <ShieldAlert className="h-3 w-3" /> Keamanan Ketat: Pindah Tab = Gagal
+                <ShieldAlert className="h-3 w-3" /> NO TOLERANCE: PINDAH TAB = AUTO-FAIL
               </div>
             </div>
             

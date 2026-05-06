@@ -6,7 +6,7 @@ import { useAppAuth } from "@/contexts/auth-context";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent, CardDescription, CardFooter } from "@/components/ui/card";
 import { useRouter } from "next/navigation";
-import { BookOpen, LogOut, Settings, Award, User, ListChecks, LayoutDashboard, ShieldCheck, TrendingUp, CheckCircle, AlertCircle, Users, Info, MapPin, Phone, GraduationCap } from "lucide-react";
+import { BookOpen, LogOut, Settings, Award, User, ListChecks, LayoutDashboard, ShieldCheck, CheckCircle, AlertCircle, Users, Info, MapPin, Phone, GraduationCap } from "lucide-react";
 import { useAuth, useFirestore } from "@/firebase";
 import { signOut } from "firebase/auth";
 import { useEffect, useState, useCallback } from "react";

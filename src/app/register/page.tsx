@@ -95,17 +95,20 @@ export default function RegisterPage() {
     setLoading(true);
     try {
       const provider = new GoogleAuthProvider();
+      // Gunakan popup untuk konsistensi di Workstation environment
       const result = await signInWithPopup(auth, provider);
       const user = result.user;
       
       const profileRef = doc(db, "userProfiles", user.uid);
       const profileSnap = await getDoc(profileRef);
       
+      // Jika profil belum ada, buat profil dasar (role student)
+      // Biodata lengkap akan diminta di Dashboard sebelum ujian dimulai
       if (!profileSnap.exists()) {
         await setDoc(profileRef, {
           id: user.uid,
           email: user.email,
-          displayName: user.displayName || "User",
+          displayName: user.displayName || "Siswa Baru",
           role: "student",
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
@@ -114,10 +117,11 @@ export default function RegisterPage() {
       
       router.push("/dashboard");
     } catch (error: any) {
+      console.error("Google Auth Error:", error);
       toast({
         variant: "destructive",
         title: "Google Auth Gagal",
-        description: error.message || "Gagal masuk dengan Google.",
+        description: "Gagal menyambungkan dengan Google. Pastikan izin popup diizinkan.",
       });
     } finally {
       setLoading(false);
@@ -261,6 +265,7 @@ export default function RegisterPage() {
           </div>
 
           <Button 
+            type="button"
             variant="outline" 
             className="w-full h-11 border-2 font-bold flex items-center justify-center gap-2 hover:bg-muted transition-colors"
             onClick={handleGoogleRegister}
