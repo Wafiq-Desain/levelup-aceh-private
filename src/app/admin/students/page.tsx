@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
-import { ChevronLeft, Search, User, Mail, GraduationCap, Award, Info, RefreshCw, Eye } from "lucide-react";
+import { ChevronLeft, Search, User, Mail, GraduationCap, Award, Info, RefreshCw, Eye, MapPin, Phone } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useFirestore } from "@/firebase";
 import { collection, query, getDocs, where, orderBy } from "firebase/firestore";
@@ -73,8 +73,9 @@ export default function AdminStudentsPage() {
     const name = (s.displayName || "").toLowerCase();
     const email = (s.email || "").toLowerCase();
     const sClass = (s.class || "").toLowerCase();
+    const school = (s.schoolName || "").toLowerCase();
     const search = searchTerm.toLowerCase();
-    return name.includes(search) || email.includes(search) || sClass.includes(search);
+    return name.includes(search) || email.includes(search) || sClass.includes(search) || school.includes(search);
   });
 
   return (
@@ -100,12 +101,12 @@ export default function AdminStudentsPage() {
             <CardHeader className="flex flex-col md:flex-row items-center justify-between space-y-4 md:space-y-0 bg-muted/10 border-b">
               <div>
                 <CardTitle className="text-lg">Daftar Siswa Terdaftar</CardTitle>
-                <CardDescription>Kalkulasi total: {students.length} Siswa</CardDescription>
+                <CardDescription>Total: {students.length} Siswa</CardDescription>
               </div>
               <div className="relative w-full md:w-80">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input 
-                  placeholder="Cari Nama, Email, atau Kelas..." 
+                  placeholder="Cari Nama, Email, Sekolah atau Kelas..." 
                   className="pl-9 bg-white"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
@@ -128,8 +129,8 @@ export default function AdminStudentsPage() {
                   <Table>
                     <TableHeader className="bg-muted/30">
                       <TableRow>
-                        <TableHead className="font-bold text-foreground">NAMA LENGKAP</TableHead>
-                        <TableHead className="font-bold text-foreground">EMAIL</TableHead>
+                        <TableHead className="font-bold text-foreground">IDENTITAS</TableHead>
+                        <TableHead className="font-bold text-foreground">SEKOLAH & KONTAK</TableHead>
                         <TableHead className="font-bold text-foreground">KELAS</TableHead>
                         <TableHead className="text-right font-bold text-foreground">AKSI</TableHead>
                       </TableRow>
@@ -137,8 +138,18 @@ export default function AdminStudentsPage() {
                     <TableBody>
                       {filteredStudents.map((s) => (
                         <TableRow key={s.id} className="hover:bg-muted/10">
-                          <TableCell className="font-bold uppercase text-primary">{s.displayName || "N/A"}</TableCell>
-                          <TableCell className="text-muted-foreground">{s.email}</TableCell>
+                          <TableCell>
+                            <div className="flex flex-col">
+                              <span className="font-bold uppercase text-primary text-base">{s.displayName || "N/A"}</span>
+                              <span className="text-xs text-muted-foreground italic flex items-center gap-1"><Mail className="h-3 w-3" /> {s.email}</span>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex flex-col gap-1">
+                              <span className="text-sm font-medium flex items-center gap-1"><MapPin className="h-3.5 w-3.5 text-muted-foreground" /> {s.schoolName || "-"}</span>
+                              <span className="text-xs text-muted-foreground flex items-center gap-1"><Phone className="h-3.5 w-3.5" /> {s.phoneNumber || "-"}</span>
+                            </div>
+                          </TableCell>
                           <TableCell>
                             <Badge variant="secondary" className="bg-blue-100 text-blue-700 hover:bg-blue-100 border-none">
                               <GraduationCap className="h-3 w-3 mr-1" /> {s.class || "Umum"}
@@ -168,7 +179,7 @@ export default function AdminStudentsPage() {
                 Histori Nilai: {selectedStudent?.displayName}
               </DialogTitle>
               <DialogDescription>
-                Jenjang: {selectedStudent?.class || "Umum"} • Email: {selectedStudent?.email}
+                Jenjang: {selectedStudent?.class || "Umum"} • Sekolah: {selectedStudent?.schoolName || "N/A"}
               </DialogDescription>
             </DialogHeader>
 

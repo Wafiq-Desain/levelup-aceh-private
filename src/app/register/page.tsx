@@ -23,6 +23,8 @@ export default function RegisterPage() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [studentClass, setStudentClass] = useState("");
+  const [schoolName, setSchoolName] = useState("");
+  const [phoneNumber, setPhoneNumber] = useState("");
   const [loading, setLoading] = useState(false);
   const router = useRouter();
   const { toast } = useToast();
@@ -44,11 +46,11 @@ export default function RegisterPage() {
       return;
     }
 
-    if (!studentClass) {
+    if (!studentClass || !schoolName || !phoneNumber) {
       toast({
         variant: "destructive",
-        title: "Kelas Wajib Dipilih",
-        description: "Silakan pilih kelas Anda terlebih dahulu.",
+        title: "Biodata Belum Lengkap",
+        description: "Silakan lengkapi seluruh biodata Anda (Kelas, Sekolah, dan Nomor WA).",
       });
       return;
     }
@@ -66,6 +68,8 @@ export default function RegisterPage() {
         displayName: name,
         role: "student",
         class: studentClass,
+        schoolName: schoolName,
+        phoneNumber: phoneNumber,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       });
@@ -103,7 +107,6 @@ export default function RegisterPage() {
           email: user.email,
           displayName: user.displayName || "User",
           role: "student",
-          class: "Umum", // Default for Google Sign-in if not exists
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
         });
@@ -165,21 +168,45 @@ export default function RegisterPage() {
                 required
               />
             </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="class">Pilih Kelas</Label>
+                <Select value={studentClass} onValueChange={setStudentClass}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Pilih" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="10 SMA">10 SMA</SelectItem>
+                    <SelectItem value="11 SMA">11 SMA</SelectItem>
+                    <SelectItem value="12 SMA">12 SMA</SelectItem>
+                    <SelectItem value="Gapyear">Gapyear</SelectItem>
+                    <SelectItem value="Kedinasan">Kedinasan</SelectItem>
+                    <SelectItem value="Lainnya">Lainnya</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="phoneNumber">Nomor WA</Label>
+                <Input
+                  id="phoneNumber"
+                  type="tel"
+                  placeholder="0812..."
+                  value={phoneNumber}
+                  onChange={(e) => setPhoneNumber(e.target.value)}
+                  required
+                />
+              </div>
+            </div>
             <div className="space-y-2">
-              <Label htmlFor="class">Pilih Kelas</Label>
-              <Select value={studentClass} onValueChange={setStudentClass}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Pilih jenjang/kelas" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="10 SMA">10 SMA</SelectItem>
-                  <SelectItem value="11 SMA">11 SMA</SelectItem>
-                  <SelectItem value="12 SMA">12 SMA</SelectItem>
-                  <SelectItem value="Gapyear">Gapyear / Alumni</SelectItem>
-                  <SelectItem value="Kedinasan">Persiapan Kedinasan</SelectItem>
-                  <SelectItem value="Lainnya">Lainnya</SelectItem>
-                </SelectContent>
-              </Select>
+              <Label htmlFor="schoolName">Asal Sekolah</Label>
+              <Input
+                id="schoolName"
+                type="text"
+                placeholder="Contoh: SMAN 1 Banda Aceh"
+                value={schoolName}
+                onChange={(e) => setSchoolName(e.target.value)}
+                required
+              />
             </div>
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>

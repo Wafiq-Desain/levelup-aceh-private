@@ -28,6 +28,14 @@
           "type": "string",
           "description": "The class or grade of the student (e.g., '12 SMA', 'Gapyear')."
         },
+        "schoolName": {
+          "type": "string",
+          "description": "The name of the student's origin school."
+        },
+        "phoneNumber": {
+          "type": "string",
+          "description": "Student's WhatsApp or phone number."
+        },
         "createdAt": {
           "type": "string",
           "description": "Timestamp indicating when the user profile was created.",
