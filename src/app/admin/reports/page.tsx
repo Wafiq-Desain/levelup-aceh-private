@@ -13,7 +13,7 @@ import {
   Trash2,
   ShieldAlert,
   RefreshCw,
-  ExternalLink
+  Loader2
 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 import { useFirestore } from "@/firebase";
@@ -36,13 +36,11 @@ export default function AdminReportsPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [usersMap, setUsersMap] = useState<Record<string, any>>({});
   const [examsMap, setExamsMap] = useState<Record<string, any>>({});
-  const [permissionDenied, setPermissionDenied] = useState(false);
-  const [indexMissing, setIndexMissing] = useState(false);
+  const [statusMessage, setStatusMessage] = useState<{title: string, desc: string, type: 'error' | 'info'} | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    setPermissionDenied(false);
-    setIndexMissing(false);
+    setStatusMessage(null);
     
     try {
       // 1. Fetch User Profiles
@@ -62,7 +60,6 @@ export default function AdminReportsPage() {
       setExamsMap(eMap);
 
       // 3. Fetch results using collectionGroup
-      // Note: This requires a collection group index for 'results' ordered by 'submissionTime'
       const resultsQuery = query(collectionGroup(db, "results"), orderBy("submissionTime", "desc"));
       const resultsSnap = await getDocs(resultsQuery);
       
@@ -72,8 +69,7 @@ export default function AdminReportsPage() {
         const pathParts = path.split('/');
         
         // Accurate Extraction of Student ID: users/{userId}/results/{resultId}
-        const usersIndex = pathParts.indexOf('users');
-        const studentIdFromPath = usersIndex !== -1 ? pathParts[usersIndex + 1] : data.studentId;
+        const studentIdFromPath = pathParts[1];
         
         return { 
           id: d.id, 
@@ -86,10 +82,18 @@ export default function AdminReportsPage() {
       setResults(resultsList);
     } catch (err: any) {
       console.error("Error fetching reports:", err);
-      if (err.message?.includes("index") || err.code === 'failed-precondition') {
-        setIndexMissing(true);
-      } else if (err.code === 'permission-denied') {
-        setPermissionDenied(true);
+      if (err.message?.includes('building')) {
+        setStatusMessage({
+          title: "Indeks Sedang Dibuat",
+          desc: "Firestore sedang memproses data laporan. Mohon tunggu beberapa menit.",
+          type: 'info'
+        });
+      } else if (err.code === 'failed-precondition' || err.message?.includes('index')) {
+        setStatusMessage({
+          title: "Indeks Firestore Diperlukan",
+          desc: "Sistem memerlukan indeks pencarian grup untuk menampilkan laporan ini. Klik link di Console (F12).",
+          type: 'error'
+        });
       }
     } finally {
       setLoading(false);
@@ -152,161 +156,143 @@ export default function AdminReportsPage() {
         </header>
 
         <main className="container mx-auto px-4 py-8 max-w-6xl">
-          {indexMissing && (
-            <Alert variant="destructive" className="mb-6 bg-amber-50 border-amber-500 text-amber-900">
-              <Info className="h-5 w-5 text-amber-600 shrink-0" />
+          {statusMessage && (
+            <Alert variant={statusMessage.type === 'error' ? "destructive" : "default"} className={cn(
+              "mb-6 border-2",
+              statusMessage.type === 'info' ? "bg-blue-50 border-blue-200 text-blue-900" : "bg-amber-50 border-amber-500 text-amber-900"
+            )}>
+              {statusMessage.type === 'info' ? <Loader2 className="h-5 w-5 animate-spin text-blue-600" /> : <Info className="h-5 w-5 text-amber-600" />}
               <div className="ml-3">
-                <AlertTitle className="font-bold">Indeks Firestore Diperlukan</AlertTitle>
-                <AlertDescription className="mt-2 space-y-2">
-                  <p>Sistem memerlukan indeks pencarian grup untuk menampilkan laporan ini.</p>
-                  <div className="bg-white/50 p-3 rounded border border-amber-200 text-sm">
-                    <strong>Cara mengaktifkan:</strong>
-                    <ol className="list-decimal ml-4 mt-1">
-                      <li>Buka <strong>Browser Console (F12)</strong>.</li>
-                      <li>Klik link <strong>"https://console.firebase.google.com..."</strong> pada pesan error merah.</li>
-                      <li>Klik <strong>"Create Index"</strong> di konsol Firebase.</li>
-                    </ol>
-                  </div>
+                <AlertTitle className="font-bold">{statusMessage.title}</AlertTitle>
+                <AlertDescription className="mt-1">
+                  {statusMessage.desc}
                 </AlertDescription>
               </div>
             </Alert>
           )}
 
-          {permissionDenied ? (
-            <Card className="border-destructive bg-destructive/5">
-              <CardContent className="pt-6 text-center space-y-4">
-                <AlertTriangle className="h-12 w-12 text-destructive mx-auto" />
-                <h2 className="text-xl font-bold text-destructive">Akses Ditolak</h2>
-                <p className="text-muted-foreground">Pastikan Anda memiliki akses administrator.</p>
-                <Button variant="outline" onClick={fetchData}>Muat Ulang</Button>
-              </CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <Card className="border-l-4 border-primary shadow-sm bg-white">
+              <CardHeader className="pb-2">
+                <CardDescription>Total Ujian Selesai</CardDescription>
+                <CardTitle className="text-3xl font-bold">{results.length}</CardTitle>
+              </CardHeader>
             </Card>
-          ) : (
-            <>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                <Card className="border-l-4 border-primary shadow-sm bg-white">
-                  <CardHeader className="pb-2">
-                    <CardDescription>Total Ujian Selesai</CardDescription>
-                    <CardTitle className="text-3xl font-bold">{results.length}</CardTitle>
-                  </CardHeader>
-                </Card>
-                <Card className="border-l-4 border-green-500 shadow-sm bg-white">
-                  <CardHeader className="pb-2">
-                    <CardDescription>Rata-rata Skor</CardDescription>
-                    <CardTitle className="text-3xl font-bold">
-                      {results.length > 0 
-                        ? Math.round(results.reduce((acc, curr) => acc + (curr.totalScore || 0), 0) / results.length)
-                        : 0}
-                    </CardTitle>
-                  </CardHeader>
-                </Card>
-                <Card className="border-l-4 border-amber-500 shadow-sm bg-white">
-                  <CardHeader className="pb-2">
-                    <CardDescription>Total Pelanggaran</CardDescription>
-                    <CardTitle className="text-3xl font-bold">
-                      {results.reduce((acc, curr) => acc + (curr.antiCheatWarningCount || 0), 0)}
-                    </CardTitle>
-                  </CardHeader>
-                </Card>
+            <Card className="border-l-4 border-green-500 shadow-sm bg-white">
+              <CardHeader className="pb-2">
+                <CardDescription>Rata-rata Skor</CardDescription>
+                <CardTitle className="text-3xl font-bold">
+                  {results.length > 0 
+                    ? Math.round(results.reduce((acc, curr) => acc + (curr.totalScore || 0), 0) / results.length)
+                    : 0}
+                </CardTitle>
+              </CardHeader>
+            </Card>
+            <Card className="border-l-4 border-amber-500 shadow-sm bg-white">
+              <CardHeader className="pb-2">
+                <CardDescription>Total Pelanggaran</CardDescription>
+                <CardTitle className="text-3xl font-bold">
+                  {results.reduce((acc, curr) => acc + (curr.antiCheatWarningCount || 0), 0)}
+                </CardTitle>
+              </CardHeader>
+            </Card>
+          </div>
+
+          <Card className="shadow-lg border-none">
+            <CardHeader className="flex flex-col md:flex-row items-center justify-between space-y-4 md:space-y-0 bg-muted/10 border-b">
+              <div>
+                <CardTitle className="text-lg">Monitoring Nilai Siswa</CardTitle>
+                <CardDescription>Data identitas dan kelas diambil dari profil pendaftaran siswa.</CardDescription>
               </div>
+              <div className="relative w-full md:w-80">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input 
+                  placeholder="Cari Nama, Kelas atau Ujian..." 
+                  className="pl-9 bg-white"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
+              </div>
+            </CardHeader>
+            <CardContent className="pt-6">
+              {loading ? (
+                <div className="flex flex-col items-center justify-center py-20 gap-4">
+                  <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary"></div>
+                  <p className="text-muted-foreground font-medium">Sinkronisasi data...</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader className="bg-muted/30">
+                      <TableRow>
+                        <TableHead className="font-bold text-foreground">IDENTITAS SISWA</TableHead>
+                        <TableHead className="font-bold text-foreground">PAKET UJIAN</TableHead>
+                        <TableHead className="text-center font-bold text-foreground">PELANGGARAN</TableHead>
+                        <TableHead className="text-center font-bold text-foreground">SKOR IRT</TableHead>
+                        <TableHead className="text-right font-bold text-foreground">AKSI</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredResults.map((res) => {
+                        const userProfile = usersMap[res.studentId];
+                        const exam = examsMap[res.examId];
+                        const warnings = res.antiCheatWarningCount || 0;
 
-              <Card className="shadow-lg border-none">
-                <CardHeader className="flex flex-col md:flex-row items-center justify-between space-y-4 md:space-y-0 bg-muted/10 border-b">
-                  <div>
-                    <CardTitle className="text-lg">Monitoring Nilai Siswa</CardTitle>
-                    <CardDescription>Data identitas dan kelas diambil dari profil pendaftaran siswa.</CardDescription>
-                  </div>
-                  <div className="relative w-full md:w-80">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input 
-                      placeholder="Cari Nama, Kelas atau Ujian..." 
-                      className="pl-9 bg-white"
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                    />
-                  </div>
-                </CardHeader>
-                <CardContent className="pt-6">
-                  {loading ? (
-                    <div className="flex flex-col items-center justify-center py-20 gap-4">
-                      <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary"></div>
-                      <p className="text-muted-foreground">Sinkronisasi data...</p>
-                    </div>
-                  ) : (
-                    <div className="overflow-x-auto">
-                      <Table>
-                        <TableHeader className="bg-muted/30">
-                          <TableRow>
-                            <TableHead className="font-bold text-foreground">IDENTITAS SISWA</TableHead>
-                            <TableHead className="font-bold text-foreground">PAKET UJIAN</TableHead>
-                            <TableHead className="text-center font-bold text-foreground">PELANGGARAN</TableHead>
-                            <TableHead className="text-center font-bold text-foreground">SKOR IRT</TableHead>
-                            <TableHead className="text-right font-bold text-foreground">AKSI</TableHead>
+                        return (
+                          <TableRow key={res.fullPath} className="hover:bg-muted/10 border-b">
+                            <TableCell>
+                              <div className="flex flex-col">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-bold text-primary text-base uppercase">
+                                    {userProfile?.displayName || "Siswa Tanpa Nama"}
+                                  </span>
+                                  {userProfile?.class && (
+                                    <Badge variant="outline" className="text-[9px] bg-blue-50 text-blue-600 border-blue-200">
+                                      {userProfile.class} {userProfile.initialClass ? `(${userProfile.initialClass})` : ""}
+                                    </Badge>
+                                  )}
+                                </div>
+                                <span className="text-[10px] text-muted-foreground font-mono bg-muted/80 px-1 rounded w-fit mt-1">
+                                  ID: {res.studentId}
+                                </span>
+                              </div>
+                            </TableCell>
+                            <TableCell className="font-medium">
+                              {exam?.title || "Ujian Tidak Diketahui"}
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <Badge 
+                                variant={warnings > 0 ? "destructive" : "outline"}
+                                className="font-bold"
+                              >
+                                <ShieldAlert className="h-3 w-3 mr-1" /> {warnings}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <Badge className="bg-primary text-white font-black text-sm px-3 shadow-sm">
+                                {res.totalScore}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                className="text-destructive hover:bg-destructive/10 h-10 w-10"
+                                onClick={() => handleDeleteResult(res)}
+                                title="Hapus Nilai"
+                              >
+                                <Trash2 className="h-5 w-5" />
+                              </Button>
+                            </TableCell>
                           </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {filteredResults.map((res) => {
-                            const userProfile = usersMap[res.studentId];
-                            const exam = examsMap[res.examId];
-                            const warnings = res.antiCheatWarningCount || 0;
-
-                            return (
-                              <TableRow key={res.fullPath} className="hover:bg-muted/10 border-b">
-                                <TableCell>
-                                  <div className="flex flex-col">
-                                    <div className="flex items-center gap-2">
-                                      <span className="font-bold text-primary text-base uppercase">
-                                        {userProfile?.displayName || "Siswa Tanpa Nama"}
-                                      </span>
-                                      {userProfile?.class && (
-                                        <Badge variant="outline" className="text-[9px] bg-blue-50 text-blue-600 border-blue-200">
-                                          {userProfile.class} {userProfile.initialClass ? `(${userProfile.initialClass})` : ""}
-                                        </Badge>
-                                      )}
-                                    </div>
-                                    <span className="text-[10px] text-muted-foreground font-mono bg-muted/80 px-1 rounded w-fit mt-1">
-                                      ID: {res.studentId}
-                                    </span>
-                                  </div>
-                                </TableCell>
-                                <TableCell className="font-medium">
-                                  {exam?.title || "Ujian Tidak Diketahui"}
-                                </TableCell>
-                                <TableCell className="text-center">
-                                  <Badge 
-                                    variant={warnings > 0 ? "destructive" : "outline"}
-                                    className="font-bold"
-                                  >
-                                    <ShieldAlert className="h-3 w-3 mr-1" /> {warnings}
-                                  </Badge>
-                                </TableCell>
-                                <TableCell className="text-center">
-                                  <Badge className="bg-primary text-white font-black text-sm px-3 shadow-sm">
-                                    {res.totalScore}
-                                  </Badge>
-                                </TableCell>
-                                <TableCell className="text-right">
-                                  <Button 
-                                    variant="ghost" 
-                                    size="icon" 
-                                    className="text-destructive hover:bg-destructive/10 h-10 w-10"
-                                    onClick={() => handleDeleteResult(res)}
-                                    title="Hapus Nilai"
-                                  >
-                                    <Trash2 className="h-5 w-5" />
-                                  </Button>
-                                </TableCell>
-                              </TableRow>
-                            );
-                          })}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </>
-          )}
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </main>
       </div>
     </ProtectedRoute>

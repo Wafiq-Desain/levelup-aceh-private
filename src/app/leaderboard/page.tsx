@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Trophy, ChevronLeft, Medal, Star, School, Search, Info, ExternalLink } from "lucide-react";
+import { Trophy, ChevronLeft, Medal, Star, School, Search, Info, Loader2 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 import { useFirestore } from "@/firebase";
 import { collection, collectionGroup, getDocs, query, where, orderBy, limit } from "firebase/firestore";
@@ -24,7 +24,7 @@ export default function LeaderboardPage() {
   const [leaderboard, setLeaderboard] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [usersMap, setUsersMap] = useState<Record<string, any>>({});
-  const [indexError, setIndexError] = useState(false);
+  const [statusMessage, setStatusMessage] = useState<{title: string, desc: string, type: 'error' | 'info'} | null>(null);
 
   useEffect(() => {
     const fetchExams = async () => {
@@ -62,14 +62,14 @@ export default function LeaderboardPage() {
   const fetchLeaderboard = useCallback(async () => {
     if (!selectedExamId) return;
     setLoading(true);
-    setIndexError(false);
+    setStatusMessage(null);
     
     try {
       const q = query(
         collectionGroup(db, "results"),
         where("examId", "==", selectedExamId),
         orderBy("totalScore", "desc"),
-        limit(20) // Ambil lebih banyak untuk deduplikasi manual
+        limit(50)
       );
       
       const snap = await getDocs(q);
@@ -86,6 +86,7 @@ export default function LeaderboardPage() {
         };
       });
 
+      // Deduplikasi: Hanya ambil skor tertinggi per siswa jika mereka mencoba 2x
       const uniqueLeaderboard: any[] = [];
       const seenUsers = new Set();
       
@@ -99,8 +100,18 @@ export default function LeaderboardPage() {
       setLeaderboard(uniqueLeaderboard.slice(0, 10));
     } catch (err: any) {
       console.error("Leaderboard fetch error:", err);
-      if (err.code === 'failed-precondition' || err.message?.includes('index')) {
-        setIndexError(true);
+      if (err.message?.includes('building')) {
+        setStatusMessage({
+          title: "Indeks Sedang Dibuat",
+          desc: "Firestore sedang memproses data peringkat Anda. Mohon tunggu 3-5 menit lalu segarkan halaman ini.",
+          type: 'info'
+        });
+      } else if (err.code === 'failed-precondition' || err.message?.includes('index')) {
+        setStatusMessage({
+          title: "Indeks Diperlukan",
+          desc: "Sistem memerlukan indeks untuk menampilkan leaderboard ini. Klik link di Console (F12) untuk mengaktifkan.",
+          type: 'error'
+        });
       }
     } finally {
       setLoading(false);
@@ -147,22 +158,16 @@ export default function LeaderboardPage() {
             </CardContent>
           </Card>
 
-          {indexError && (
-            <Alert variant="destructive" className="mb-6 bg-amber-50 border-amber-500 text-amber-900">
-              <Info className="h-5 w-5 text-amber-600 shrink-0" />
+          {statusMessage && (
+            <Alert variant={statusMessage.type === 'error' ? "destructive" : "default"} className={cn(
+              "mb-6 border-2",
+              statusMessage.type === 'info' ? "bg-blue-50 border-blue-200 text-blue-900" : "bg-amber-50 border-amber-500 text-amber-900"
+            )}>
+              {statusMessage.type === 'info' ? <Loader2 className="h-5 w-5 animate-spin text-blue-600" /> : <Info className="h-5 w-5 text-amber-600" />}
               <div className="ml-3">
-                <AlertTitle className="font-bold text-lg">Indeks Firestore Diperlukan</AlertTitle>
-                <AlertDescription className="mt-2 space-y-3">
-                  <p>Sistem memerlukan indeks untuk menampilkan leaderboard ini secara global.</p>
-                  <div className="bg-white/50 p-3 rounded-lg border border-amber-200 text-sm">
-                    <strong>Cara mengaktifkan:</strong>
-                    <ol className="list-decimal ml-4 mt-1 space-y-1">
-                      <li>Tekan <strong>F12</strong> pada keyboard untuk buka Browser Console.</li>
-                      <li>Cari pesan error merah dari Firestore.</li>
-                      <li>Klik tautan <strong>"https://console.firebase.google.com..."</strong> yang ada di sana.</li>
-                      <li>Klik <strong>"Create Index"</strong> di tab baru yang terbuka.</li>
-                    </ol>
-                  </div>
+                <AlertTitle className="font-bold">{statusMessage.title}</AlertTitle>
+                <AlertDescription className="mt-1">
+                  {statusMessage.desc}
                 </AlertDescription>
               </div>
             </Alert>
@@ -188,10 +193,10 @@ export default function LeaderboardPage() {
                   <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary"></div>
                   <p className="text-muted-foreground font-medium">Mencari jawara...</p>
                 </div>
-              ) : leaderboard.length === 0 && !indexError ? (
+              ) : leaderboard.length === 0 && !statusMessage ? (
                 <div className="text-center py-20">
                   <Search className="h-12 w-12 text-muted-foreground/20 mx-auto mb-4" />
-                  <p className="text-muted-foreground">Belum ada data nilai untuk tryout ini.</p>
+                  <p className="text-muted-foreground font-medium">Belum ada data nilai untuk tryout ini.</p>
                 </div>
               ) : (
                 <div className="overflow-x-auto">
