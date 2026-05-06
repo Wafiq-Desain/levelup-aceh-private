@@ -49,6 +49,7 @@ export default function LoginPage() {
     setLoading(true);
     try {
       const provider = new GoogleAuthProvider();
+      // Gunakan signInWithPopup untuk lingkungan web
       const result = await signInWithPopup(auth, provider);
       const user = result.user;
       
@@ -68,10 +69,17 @@ export default function LoginPage() {
       
       router.push("/dashboard");
     } catch (error: any) {
+      console.error("Google Login Error:", error);
+      let message = "Gagal masuk dengan Google.";
+      
+      if (error.code === 'auth/unauthorized-domain') {
+        message = "Domain ini belum diizinkan di Firebase Console. Silakan tambahkan domain ini ke 'Authorized Domains' di Settings Authentication.";
+      }
+      
       toast({
         variant: "destructive",
         title: "Google Login Gagal",
-        description: error.message || "Gagal masuk dengan Google.",
+        description: message,
       });
     } finally {
       setLoading(false);
@@ -88,6 +96,7 @@ export default function LoginPage() {
             fill 
             className="object-cover opacity-10" 
             priority
+            data-ai-hint="university building"
           />
         </div>
       )}
@@ -101,6 +110,7 @@ export default function LoginPage() {
                 alt="Level Up Aceh Logo" 
                 fill 
                 className="object-contain"
+                data-ai-hint="educational logo"
               />
             ) : (
               <div className="w-full h-full flex items-center justify-center bg-primary/10 text-primary font-bold">LU</div>

@@ -95,15 +95,12 @@ export default function RegisterPage() {
     setLoading(true);
     try {
       const provider = new GoogleAuthProvider();
-      // Gunakan popup untuk konsistensi di Workstation environment
       const result = await signInWithPopup(auth, provider);
       const user = result.user;
       
       const profileRef = doc(db, "userProfiles", user.uid);
       const profileSnap = await getDoc(profileRef);
       
-      // Jika profil belum ada, buat profil dasar (role student)
-      // Biodata lengkap akan diminta di Dashboard sebelum ujian dimulai
       if (!profileSnap.exists()) {
         await setDoc(profileRef, {
           id: user.uid,
@@ -118,10 +115,16 @@ export default function RegisterPage() {
       router.push("/dashboard");
     } catch (error: any) {
       console.error("Google Auth Error:", error);
+      let message = "Gagal menyambungkan dengan Google.";
+      
+      if (error.code === 'auth/unauthorized-domain') {
+        message = "Domain ini belum diizinkan di Firebase Console. Silakan tambahkan domain ini ke 'Authorized Domains' di Settings Authentication.";
+      }
+      
       toast({
         variant: "destructive",
         title: "Google Auth Gagal",
-        description: "Gagal menyambungkan dengan Google. Pastikan izin popup diizinkan.",
+        description: message,
       });
     } finally {
       setLoading(false);
@@ -138,6 +141,7 @@ export default function RegisterPage() {
             fill 
             className="object-cover opacity-10" 
             priority
+            data-ai-hint="university building"
           />
         </div>
       )}
@@ -151,6 +155,7 @@ export default function RegisterPage() {
                 alt="Level Up Aceh Logo" 
                 fill 
                 className="object-contain"
+                data-ai-hint="educational logo"
               />
             ) : null}
           </div>
