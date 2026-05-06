@@ -47,28 +47,20 @@ export default function AdminReportsPage() {
     
     try {
       // 1. Fetch User Profiles first to map IDs to Names
-      try {
-        const usersSnap = await getDocs(collection(db, "userProfiles"));
-        const uMap: Record<string, any> = {};
-        usersSnap.forEach(d => {
-          uMap[d.id] = d.data();
-        });
-        setUsersMap(uMap);
-      } catch (e) {
-        console.warn("Gagal mengambil pemetaan profil user:", e);
-      }
+      const usersSnap = await getDocs(collection(db, "userProfiles"));
+      const uMap: Record<string, any> = {};
+      usersSnap.forEach(d => {
+        uMap[d.id] = d.data();
+      });
+      setUsersMap(uMap);
 
       // 2. Fetch Exam titles
-      try {
-        const examsSnap = await getDocs(collection(db, "exams"));
-        const eMap: Record<string, any> = {};
-        examsSnap.forEach(d => {
-          eMap[d.id] = d.data();
-        });
-        setExamsMap(eMap);
-      } catch (e) {
-        console.warn("Gagal mengambil pemetaan ujian:", e);
-      }
+      const examsSnap = await getDocs(collection(db, "exams"));
+      const eMap: Record<string, any> = {};
+      examsSnap.forEach(d => {
+        eMap[d.id] = d.data();
+      });
+      setExamsMap(eMap);
 
       // 3. Fetch results using collectionGroup
       const resultsQuery = query(collectionGroup(db, "results"), orderBy("submissionTime", "desc"));
@@ -77,9 +69,8 @@ export default function AdminReportsPage() {
       const resultsList = resultsSnap.docs.map(d => {
         const data = d.data();
         const path = d.ref.path;
-        // Expected Path: users/{userId}/results/{resultId}
         const pathParts = path.split('/');
-        // Extra careful ID extraction
+        // Extract studentId from path: users/{userId}/results/{resultId}
         const studentIdFromPath = pathParts[pathParts.indexOf('users') + 1];
         
         return { 
@@ -118,19 +109,19 @@ export default function AdminReportsPage() {
     // Optimistic UI update
     setResults(prev => prev.filter(r => r.fullPath !== res.fullPath));
 
-    // Ensure we use the correct document reference
+    // Ensure we use the correct absolute document reference from the fullPath
     const resultRef = doc(db, res.fullPath);
     deleteDocumentNonBlocking(resultRef);
     
     toast({
       title: "Berhasil Dihapus",
-      description: `Data nilai ${studentDisplayName} telah dihapus dari sistem.`
+      description: `Data nilai ${studentDisplayName} telah dihapus.`
     });
   };
 
   const filteredResults = results.filter(res => {
     const student = usersMap[res.studentId];
-    const studentName = (student?.displayName || "Siswa").toLowerCase();
+    const studentName = (student?.displayName || "Siswa Tanpa Nama").toLowerCase();
     const studentEmail = (student?.email || "").toLowerCase();
     const studentId = (res.studentId || "").toLowerCase();
     const exam = examsMap[res.examId];
@@ -166,7 +157,7 @@ export default function AdminReportsPage() {
               <Info className="h-4 w-4 text-amber-600" />
               <AlertTitle className="font-bold">Indeks Firestore Diperlukan</AlertTitle>
               <AlertDescription>
-                Sistem memerlukan indeks pencarian grup. Silakan klik link yang muncul di konsol atau hubungi tim IT.
+                Sistem memerlukan indeks pencarian grup. Silakan klik link yang muncul di konsol.
               </AlertDescription>
             </Alert>
           )}
@@ -176,7 +167,7 @@ export default function AdminReportsPage() {
               <CardContent className="pt-6 text-center space-y-4">
                 <AlertTriangle className="h-12 w-12 text-destructive mx-auto" />
                 <h2 className="text-xl font-bold text-destructive">Akses Ditolak</h2>
-                <p className="text-muted-foreground">Anda tidak memiliki izin untuk melihat laporan. Pastikan UID Anda terdaftar di koleksi adminUsers.</p>
+                <p className="text-muted-foreground">Pastikan UID Anda terdaftar di koleksi adminUsers.</p>
                 <Button variant="outline" onClick={fetchData}>Muat Ulang</Button>
               </CardContent>
             </Card>
@@ -186,34 +177,25 @@ export default function AdminReportsPage() {
                 <Card className="border-l-4 border-primary shadow-sm bg-white">
                   <CardHeader className="pb-2">
                     <CardDescription>Total Ujian Selesai</CardDescription>
-                    <div className="flex items-center justify-between">
-                      <CardTitle className="text-3xl font-bold">{results.length}</CardTitle>
-                      <UserIcon className="h-8 w-8 text-primary/10" />
-                    </div>
+                    <CardTitle className="text-3xl font-bold">{results.length}</CardTitle>
                   </CardHeader>
                 </Card>
                 <Card className="border-l-4 border-green-500 shadow-sm bg-white">
                   <CardHeader className="pb-2">
                     <CardDescription>Rata-rata Skor</CardDescription>
-                    <div className="flex items-center justify-between">
-                      <CardTitle className="text-3xl font-bold">
-                        {results.length > 0 
-                          ? Math.round(results.reduce((acc, curr) => acc + (curr.totalScore || 0), 0) / results.length)
-                          : 0}
-                      </CardTitle>
-                      <TrendingUp className="h-8 w-8 text-green-500/10" />
-                    </div>
+                    <CardTitle className="text-3xl font-bold">
+                      {results.length > 0 
+                        ? Math.round(results.reduce((acc, curr) => acc + (curr.totalScore || 0), 0) / results.length)
+                        : 0}
+                    </CardTitle>
                   </CardHeader>
                 </Card>
                 <Card className="border-l-4 border-amber-500 shadow-sm bg-white">
                   <CardHeader className="pb-2">
-                    <CardDescription>Total Peringatan</CardDescription>
-                    <div className="flex items-center justify-between">
-                      <CardTitle className="text-3xl font-bold">
-                        {results.reduce((acc, curr) => acc + (curr.antiCheatWarningCount || 0), 0)}
-                      </CardTitle>
-                      <ShieldAlert className="h-8 w-8 text-amber-500/10" />
-                    </div>
+                    <CardDescription>Total Pelanggaran</CardDescription>
+                    <CardTitle className="text-3xl font-bold">
+                      {results.reduce((acc, curr) => acc + (curr.antiCheatWarningCount || 0), 0)}
+                    </CardTitle>
                   </CardHeader>
                 </Card>
               </div>
@@ -221,8 +203,8 @@ export default function AdminReportsPage() {
               <Card className="shadow-lg border-none">
                 <CardHeader className="flex flex-col md:flex-row items-center justify-between space-y-4 md:space-y-0 bg-muted/10 border-b">
                   <div>
-                    <CardTitle className="text-lg">Hasil Pengerjaan Siswa</CardTitle>
-                    <CardDescription>Daftar nilai berdasarkan profil yang terdaftar saat registrasi.</CardDescription>
+                    <CardTitle className="text-lg">Monitoring Nilai Siswa</CardTitle>
+                    <CardDescription>Data identitas diambil dari profil registrasi siswa.</CardDescription>
                   </div>
                   <div className="relative w-full md:w-80">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -239,11 +221,6 @@ export default function AdminReportsPage() {
                     <div className="flex flex-col items-center justify-center py-20 gap-4">
                       <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary"></div>
                       <p className="text-muted-foreground">Sinkronisasi data...</p>
-                    </div>
-                  ) : filteredResults.length === 0 ? (
-                    <div className="text-center py-20">
-                      <Info className="h-10 w-10 text-muted-foreground mx-auto mb-2 opacity-20" />
-                      <p className="text-muted-foreground">Tidak ada hasil ujian yang ditemukan.</p>
                     </div>
                   ) : (
                     <div className="overflow-x-auto">
@@ -264,7 +241,7 @@ export default function AdminReportsPage() {
                             const warnings = res.antiCheatWarningCount || 0;
 
                             return (
-                              <TableRow key={res.fullPath} className="hover:bg-muted/10 border-b transition-colors">
+                              <TableRow key={res.fullPath} className="hover:bg-muted/10 border-b">
                                 <TableCell>
                                   <div className="flex flex-col">
                                     <span className="font-bold text-primary text-base uppercase">
@@ -286,7 +263,7 @@ export default function AdminReportsPage() {
                                 <TableCell className="text-center">
                                   <Badge 
                                     variant={warnings > 0 ? "destructive" : "outline"}
-                                    className={cn("font-bold", warnings >= 3 && "animate-pulse")}
+                                    className="font-bold"
                                   >
                                     <ShieldAlert className="h-3 w-3 mr-1" /> {warnings}
                                   </Badge>
