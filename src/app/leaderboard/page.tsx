@@ -65,11 +65,12 @@ export default function LeaderboardPage() {
     setStatusMessage(null);
     
     try {
+      // Query untuk mengambil skor tertinggi terlebih dahulu
       const q = query(
         collectionGroup(db, "results"),
         where("examId", "==", selectedExamId),
         orderBy("totalScore", "desc"),
-        limit(50)
+        limit(100) // Ambil lebih banyak untuk dideduplikasi di sisi klien
       );
       
       const snap = await getDocs(q);
@@ -86,17 +87,18 @@ export default function LeaderboardPage() {
         };
       });
 
-      // Deduplikasi: Hanya ambil skor tertinggi per siswa jika mereka mencoba 2x
+      // Deduplikasi: Hanya ambil skor tertinggi per siswa
       const uniqueLeaderboard: any[] = [];
       const seenUsers = new Set();
       
       list.forEach(res => {
-        if (!seenUsers.has(res.studentId)) {
+        if (res.studentId && !seenUsers.has(res.studentId)) {
           uniqueLeaderboard.push(res);
           seenUsers.add(res.studentId);
         }
       });
       
+      // Ambil 10 teratas setelah dideduplikasi
       setLeaderboard(uniqueLeaderboard.slice(0, 10));
     } catch (err: any) {
       console.error("Leaderboard fetch error:", err);
@@ -215,7 +217,7 @@ export default function LeaderboardPage() {
                         const rank = index + 1;
                         
                         return (
-                          <TableRow key={res.id} className={cn(
+                          <TableRow key={`${res.id}-${index}`} className={cn(
                             "group hover:bg-primary/5 transition-colors border-b",
                             rank === 1 && "bg-secondary/10",
                             rank === 2 && "bg-blue-50/10",
