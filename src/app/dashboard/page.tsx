@@ -5,6 +5,8 @@ import { ProtectedRoute } from "@/components/auth/Protected-route";
 import { useAppAuth } from "@/contexts/auth-context";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent, CardDescription, CardFooter } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
 import { useRouter } from "next/navigation";
 import { BookOpen, LogOut, Settings, Award, User, ListChecks, LayoutDashboard, ShieldCheck, CheckCircle, AlertCircle, Users, Info, MapPin, Phone, GraduationCap } from "lucide-react";
 import { useAuth, useFirestore } from "@/firebase";
@@ -12,6 +14,7 @@ import { signOut } from "firebase/auth";
 import { useEffect, useState, useCallback } from "react";
 import { collection, query, getDocs, orderBy, where, doc, getDoc } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
+import { cn } from "@/lib/utils";
 
 export default function DashboardPage() {
   const { user, role } = useAppAuth();
