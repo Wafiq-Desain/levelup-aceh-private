@@ -206,7 +206,6 @@ export default function UjianPage() {
         const profileSnap = await getDoc(doc(db, "userProfiles", user.uid));
         const profile = profileSnap.data();
         
-        // Pengecekan keamanan jika profil tidak ditemukan
         if (!profileSnap.exists()) {
           router.replace('/complete-profile');
           return;
@@ -386,7 +385,7 @@ export default function UjianPage() {
                     <img src={currentQ.imageUrl} alt="Visual" className="max-h-40 md:max-h-60 object-contain" />
                   </div>
                 )}
-                <div className="text-base md:text-lg font-medium leading-relaxed">
+                <div className="text-base md:text-lg font-medium leading-relaxed w-full">
                   <LatexRenderer content={currentQ?.questionText || ""} />
                 </div>
               </CardHeader>
@@ -411,12 +410,12 @@ export default function UjianPage() {
                       >
                         <RadioGroupItem value={label} id={`opt-${i}`} className="sr-only" />
                         <div className={cn(
-                          "w-8 h-8 rounded-lg flex items-center justify-center text-xs font-black border-2 transition-colors",
+                          "w-8 h-8 rounded-lg flex items-center justify-center text-xs font-black border-2 transition-colors shrink-0",
                           isSelected ? "bg-primary text-white border-primary" : "bg-muted text-muted-foreground group-hover:border-primary/30"
                         )}>
                           {label}
                         </div>
-                        <div className="flex-1 text-sm md:text-base">
+                        <div className="flex-1 min-w-0">
                           <LatexRenderer content={opt} inline />
                         </div>
                       </div>
