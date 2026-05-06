@@ -28,6 +28,10 @@
           "type": "string",
           "description": "The class or grade of the student (e.g., '10 SMA', 'Gapyear')."
         },
+        "initialClass": {
+          "type": "string",
+          "description": "Specific class initial for students from MAN 2 (e.g., 'F1', 'F2')."
+        },
         "schoolName": {
           "type": "string",
           "description": "The name of the student's origin school."

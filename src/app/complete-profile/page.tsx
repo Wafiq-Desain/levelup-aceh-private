@@ -14,7 +14,7 @@ import { doc, getDoc } from "firebase/firestore";
 import { setDocumentNonBlocking } from "@/firebase/non-blocking-updates";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { User, GraduationCap, MapPin, Phone, Calendar as CalendarIcon, Users } from "lucide-react";
+import { User, GraduationCap, MapPin, Phone, Calendar as CalendarIcon, Users, LayoutList } from "lucide-react";
 
 export default function CompleteProfilePage() {
   const { user, role } = useAppAuth();
@@ -28,6 +28,7 @@ export default function CompleteProfilePage() {
   // Form State
   const [name, setName] = useState("");
   const [studentClass, setStudentClass] = useState("");
+  const [initialClass, setInitialClass] = useState("");
   const [schoolName, setSchoolName] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
   const [birthDate, setBirthDate] = useState("");
@@ -43,6 +44,7 @@ export default function CompleteProfilePage() {
           const data = docSnap.data();
           setName(data.displayName || user.displayName || "");
           setStudentClass(data.class || "");
+          setInitialClass(data.initialClass || "");
           setSchoolName(data.schoolName || "");
           setPhoneNumber(data.phoneNumber || "");
           setBirthDate(data.birthDate || "");
@@ -63,9 +65,16 @@ export default function CompleteProfilePage() {
     fetchProfile();
   }, [user, db, router]);
 
+  const isMan2 = schoolName.toLowerCase().includes("man 2");
+
   const handleSave = () => {
     if (!name || !studentClass || !schoolName || !phoneNumber || !birthDate || !gender) {
       toast({ variant: "destructive", title: "Mohon lengkapi seluruh data profil Anda" });
+      return;
+    }
+
+    if (isMan2 && !initialClass) {
+      toast({ variant: "destructive", title: "Khusus siswa MAN 2, mohon isi Inisial Kelas (contoh: F1)" });
       return;
     }
 
@@ -74,6 +83,7 @@ export default function CompleteProfilePage() {
     const updatedData = {
       displayName: name,
       class: studentClass,
+      initialClass: isMan2 ? initialClass : "",
       schoolName: schoolName,
       phoneNumber: phoneNumber,
       birthDate: birthDate,
@@ -113,7 +123,7 @@ export default function CompleteProfilePage() {
                 <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nama Lengkap Sesuai Ijazah" />
               </div>
               <div className="space-y-2">
-                <Label className="flex items-center gap-2"><GraduationCap className="h-4 w-4" /> Pilih Kelas</Label>
+                <Label className="flex items-center gap-2"><GraduationCap className="h-4 w-4" /> Pilih Jenjang</Label>
                 <Select value={studentClass} onValueChange={setStudentClass}>
                   <SelectTrigger>
                     <SelectValue placeholder="Pilih jenjang" />
@@ -146,12 +156,18 @@ export default function CompleteProfilePage() {
               </div>
               <div className="space-y-2">
                 <Label className="flex items-center gap-2"><MapPin className="h-4 w-4" /> Asal Sekolah</Label>
-                <Input value={schoolName} onChange={(e) => setSchoolName(e.target.value)} placeholder="Contoh: SMAN 1 Banda Aceh" />
+                <Input value={schoolName} onChange={(e) => setSchoolName(e.target.value)} placeholder="Contoh: MAN 2 Banda Aceh" />
               </div>
               <div className="space-y-2">
                 <Label className="flex items-center gap-2"><Phone className="h-4 w-4" /> Nomor WhatsApp</Label>
                 <Input value={phoneNumber} onChange={(e) => setPhoneNumber(e.target.value)} placeholder="08123456789" />
               </div>
+              {isMan2 && (
+                <div className="space-y-2 md:col-span-2 animate-in fade-in slide-in-from-top-1">
+                  <Label className="flex items-center gap-2 text-primary font-bold"><LayoutList className="h-4 w-4" /> Inisial Kelas (Khusus MAN 2)</Label>
+                  <Input value={initialClass} onChange={(e) => setInitialClass(e.target.value)} placeholder="Masukkan inisial kelas (Contoh: F1, F2, F3...)" className="border-primary" />
+                </div>
+              )}
             </div>
           </CardContent>
           <CardFooter>

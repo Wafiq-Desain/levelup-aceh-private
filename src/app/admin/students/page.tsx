@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
-import { ChevronLeft, Search, User, Mail, GraduationCap, Award, Info, RefreshCw, Eye, MapPin, Phone } from "lucide-react";
+import { ChevronLeft, Search, User, Mail, GraduationCap, Award, Info, RefreshCw, Eye, MapPin, Phone, LayoutList } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useFirestore } from "@/firebase";
 import { collection, query, getDocs, where, orderBy } from "firebase/firestore";
@@ -151,9 +151,16 @@ export default function AdminStudentsPage() {
                             </div>
                           </TableCell>
                           <TableCell>
-                            <Badge variant="secondary" className="bg-blue-100 text-blue-700 hover:bg-blue-100 border-none">
-                              <GraduationCap className="h-3 w-3 mr-1" /> {s.class || "Umum"}
-                            </Badge>
+                            <div className="flex flex-col gap-1">
+                              <Badge variant="secondary" className="bg-blue-100 text-blue-700 hover:bg-blue-100 border-none w-fit">
+                                <GraduationCap className="h-3 w-3 mr-1" /> {s.class || "Umum"}
+                              </Badge>
+                              {s.initialClass && (
+                                <Badge variant="outline" className="text-[10px] text-primary border-primary w-fit">
+                                  <LayoutList className="h-3 w-3 mr-1" /> {s.initialClass}
+                                </Badge>
+                              )}
+                            </div>
                           </TableCell>
                           <TableCell className="text-right">
                             <Button variant="ghost" size="sm" className="text-primary hover:bg-primary/10" onClick={() => handleViewResults(s)}>
@@ -179,7 +186,7 @@ export default function AdminStudentsPage() {
                 Histori Nilai: {selectedStudent?.displayName}
               </DialogTitle>
               <DialogDescription>
-                Jenjang: {selectedStudent?.class || "Umum"} • Sekolah: {selectedStudent?.schoolName || "N/A"}
+                Jenjang: {selectedStudent?.class || "Umum"} {selectedStudent?.initialClass ? `(${selectedStudent.initialClass})` : ""} • Sekolah: {selectedStudent?.schoolName || "N/A"}
               </DialogDescription>
             </DialogHeader>
 

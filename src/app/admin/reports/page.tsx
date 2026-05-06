@@ -15,7 +15,8 @@ import {
   ShieldAlert,
   RefreshCw,
   User as UserIcon,
-  GraduationCap
+  GraduationCap,
+  LayoutList
 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 import { useFirestore } from "@/firebase";
@@ -127,10 +128,11 @@ export default function AdminReportsPage() {
     const studentName = (student?.displayName || "Siswa Tanpa Nama").toLowerCase();
     const studentEmail = (student?.email || "").toLowerCase();
     const studentClass = (student?.class || "").toLowerCase();
+    const initialClass = (student?.initialClass || "").toLowerCase();
     const exam = examsMap[res.examId];
     const examTitle = (exam?.title || "Ujian").toLowerCase();
     
-    const searchString = `${studentName} ${studentEmail} ${studentClass} ${examTitle}`;
+    const searchString = `${studentName} ${studentEmail} ${studentClass} ${initialClass} ${examTitle}`;
     return searchString.includes(searchTerm.toLowerCase());
   });
 
@@ -253,16 +255,16 @@ export default function AdminReportsPage() {
                                       </span>
                                       {userProfile?.class && (
                                         <Badge variant="outline" className="text-[9px] bg-blue-50 text-blue-600 border-blue-200">
-                                          {userProfile.class}
+                                          {userProfile.class} {userProfile.initialClass ? `(${userProfile.initialClass})` : ""}
                                         </Badge>
                                       )}
                                     </div>
                                     <span className="text-[10px] text-muted-foreground font-mono bg-muted/80 px-1 rounded w-fit mt-1">
                                       ID: {res.studentId}
                                     </span>
-                                    {userProfile?.email && (
-                                      <span className="text-xs text-muted-foreground italic">
-                                        {userProfile.email}
+                                    {userProfile?.schoolName && (
+                                      <span className="text-[11px] font-medium text-muted-foreground mt-1">
+                                        Sekolah: {userProfile.schoolName}
                                       </span>
                                     )}
                                   </div>
