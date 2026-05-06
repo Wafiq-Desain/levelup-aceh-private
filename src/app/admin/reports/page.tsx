@@ -8,15 +8,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { 
   ChevronLeft, 
   Search, 
-  TrendingUp, 
   AlertTriangle, 
   Info, 
   Trash2,
   ShieldAlert,
   RefreshCw,
-  User as UserIcon,
-  GraduationCap,
-  LayoutList
+  ExternalLink
 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 import { useFirestore } from "@/firebase";
@@ -48,7 +45,7 @@ export default function AdminReportsPage() {
     setIndexMissing(false);
     
     try {
-      // 1. Fetch User Profiles first to map IDs to Names and Classes
+      // 1. Fetch User Profiles
       const usersSnap = await getDocs(collection(db, "userProfiles"));
       const uMap: Record<string, any> = {};
       usersSnap.forEach(d => {
@@ -65,6 +62,7 @@ export default function AdminReportsPage() {
       setExamsMap(eMap);
 
       // 3. Fetch results using collectionGroup
+      // Note: This requires a collection group index for 'results' ordered by 'submissionTime'
       const resultsQuery = query(collectionGroup(db, "results"), orderBy("submissionTime", "desc"));
       const resultsSnap = await getDocs(resultsQuery);
       
@@ -73,7 +71,7 @@ export default function AdminReportsPage() {
         const path = d.ref.path;
         const pathParts = path.split('/');
         
-        // Accurate Extraction of Student ID from path: users/{userId}/results/{resultId}
+        // Accurate Extraction of Student ID: users/{userId}/results/{resultId}
         const usersIndex = pathParts.indexOf('users');
         const studentIdFromPath = usersIndex !== -1 ? pathParts[usersIndex + 1] : data.studentId;
         
@@ -106,15 +104,13 @@ export default function AdminReportsPage() {
     const userProfile = usersMap[res.studentId];
     const studentDisplayName = userProfile?.displayName || userProfile?.email || res.studentId;
     
-    if (!confirm(`Hapus nilai untuk siswa: ${studentDisplayName}?\n\nTindakan ini permanen dan tidak dapat dibatalkan.`)) {
+    if (!confirm(`Hapus nilai untuk siswa: ${studentDisplayName}?\n\nTindakan ini permanen.`)) {
       return;
     }
 
-    // Ensure we use the correct absolute document reference from the fullPath
     const resultRef = doc(db, res.fullPath);
     deleteDocumentNonBlocking(resultRef);
 
-    // Optimistic UI update
     setResults(prev => prev.filter(r => r.fullPath !== res.fullPath));
     
     toast({
@@ -128,11 +124,10 @@ export default function AdminReportsPage() {
     const studentName = (student?.displayName || "Siswa Tanpa Nama").toLowerCase();
     const studentEmail = (student?.email || "").toLowerCase();
     const studentClass = (student?.class || "").toLowerCase();
-    const initialClass = (student?.initialClass || "").toLowerCase();
     const exam = examsMap[res.examId];
     const examTitle = (exam?.title || "Ujian").toLowerCase();
     
-    const searchString = `${studentName} ${studentEmail} ${studentClass} ${initialClass} ${examTitle}`;
+    const searchString = `${studentName} ${studentEmail} ${studentClass} ${examTitle}`;
     return searchString.includes(searchTerm.toLowerCase());
   });
 
@@ -159,11 +154,21 @@ export default function AdminReportsPage() {
         <main className="container mx-auto px-4 py-8 max-w-6xl">
           {indexMissing && (
             <Alert variant="destructive" className="mb-6 bg-amber-50 border-amber-500 text-amber-900">
-              <Info className="h-4 w-4 text-amber-600" />
-              <AlertTitle className="font-bold">Indeks Firestore Diperlukan</AlertTitle>
-              <AlertDescription>
-                Sistem memerlukan indeks pencarian grup. Silakan klik link yang muncul di konsol.
-              </AlertDescription>
+              <Info className="h-5 w-5 text-amber-600 shrink-0" />
+              <div className="ml-3">
+                <AlertTitle className="font-bold">Indeks Firestore Diperlukan</AlertTitle>
+                <AlertDescription className="mt-2 space-y-2">
+                  <p>Sistem memerlukan indeks pencarian grup untuk menampilkan laporan ini.</p>
+                  <div className="bg-white/50 p-3 rounded border border-amber-200 text-sm">
+                    <strong>Cara mengaktifkan:</strong>
+                    <ol className="list-decimal ml-4 mt-1">
+                      <li>Buka <strong>Browser Console (F12)</strong>.</li>
+                      <li>Klik link <strong>"https://console.firebase.google.com..."</strong> pada pesan error merah.</li>
+                      <li>Klik <strong>"Create Index"</strong> di konsol Firebase.</li>
+                    </ol>
+                  </div>
+                </AlertDescription>
+              </div>
             </Alert>
           )}
 
@@ -262,11 +267,6 @@ export default function AdminReportsPage() {
                                     <span className="text-[10px] text-muted-foreground font-mono bg-muted/80 px-1 rounded w-fit mt-1">
                                       ID: {res.studentId}
                                     </span>
-                                    {userProfile?.schoolName && (
-                                      <span className="text-[11px] font-medium text-muted-foreground mt-1">
-                                        Sekolah: {userProfile.schoolName}
-                                      </span>
-                                    )}
                                   </div>
                                 </TableCell>
                                 <TableCell className="font-medium">
