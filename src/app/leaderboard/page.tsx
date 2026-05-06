@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Trophy, ChevronLeft, Medal, Star, School, Search, Info, Loader2 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 import { useFirestore } from "@/firebase";
-import { collection, collectionGroup, getDocs, query, where, orderBy, limit } from "firebase/firestore";
+import { collection, collectionGroup, getDocs, query, where, orderBy, limit, doc, getDoc } from "firebase/firestore";
 import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -26,6 +26,7 @@ export default function LeaderboardPage() {
   const [usersMap, setUsersMap] = useState<Record<string, any>>({});
   const [statusMessage, setStatusMessage] = useState<{title: string, desc: string, type: 'error' | 'info'} | null>(null);
 
+  // 1. Fetch available exams
   useEffect(() => {
     const fetchExams = async () => {
       try {
@@ -43,41 +44,25 @@ export default function LeaderboardPage() {
     fetchExams();
   }, [db]);
 
-  useEffect(() => {
-    const fetchUsers = async () => {
-      try {
-        const snap = await getDocs(collection(db, "userProfiles"));
-        const uMap: Record<string, any> = {};
-        snap.forEach(d => {
-          uMap[d.id] = d.data();
-        });
-        setUsersMap(uMap);
-      } catch (err) {
-        console.error("Fetch users error:", err);
-      }
-    };
-    fetchUsers();
-  }, [db]);
-
+  // 2. Main Logic to fetch scores and then fetch specific profiles
   const fetchLeaderboard = useCallback(async () => {
     if (!selectedExamId) return;
     setLoading(true);
     setStatusMessage(null);
     
     try {
-      // Query untuk mengambil skor tertinggi terlebih dahulu
+      // Step A: Get top scores
       const q = query(
         collectionGroup(db, "results"),
         where("examId", "==", selectedExamId),
         orderBy("totalScore", "desc"),
-        limit(100) // Ambil lebih banyak untuk dideduplikasi di sisi klien
+        limit(50) // Get enough to deduplicate
       );
       
       const snap = await getDocs(q);
-      const list = snap.docs.map(d => {
+      const rawList = snap.docs.map(d => {
         const data = d.data();
         const pathParts = d.ref.path.split('/');
-        // Path: users/{userId}/results/{id}
         const studentIdFromPath = pathParts[1];
         
         return { 
@@ -87,32 +72,44 @@ export default function LeaderboardPage() {
         };
       });
 
-      // Deduplikasi: Hanya ambil skor tertinggi per siswa
-      const uniqueLeaderboard: any[] = [];
+      // Deduplicate to show only best score per student
+      const uniqueResults: any[] = [];
       const seenUsers = new Set();
-      
-      list.forEach(res => {
+      rawList.forEach(res => {
         if (res.studentId && !seenUsers.has(res.studentId)) {
-          uniqueLeaderboard.push(res);
+          uniqueResults.push(res);
           seenUsers.add(res.studentId);
         }
       });
       
-      // Ambil 10 teratas setelah dideduplikasi
-      setLeaderboard(uniqueLeaderboard.slice(0, 10));
+      const top10 = uniqueResults.slice(0, 10);
+      setLeaderboard(top10);
+
+      // Step B: Fetch only profiles for these top 10 (Compliance with Security Rules)
+      const profilesMap: Record<string, any> = { ...usersMap };
+      const profilePromises = top10
+        .filter(res => !profilesMap[res.studentId]) // Only fetch what we don't have
+        .map(async (res) => {
+          try {
+            const pSnap = await getDoc(doc(db, "userProfiles", res.studentId));
+            if (pSnap.exists()) {
+              profilesMap[res.studentId] = pSnap.data();
+            }
+          } catch (e) {
+            console.warn(`Could not fetch profile for ${res.studentId}`);
+          }
+        });
+
+      await Promise.all(profilePromises);
+      setUsersMap(profilesMap);
+
     } catch (err: any) {
       console.error("Leaderboard fetch error:", err);
-      if (err.message?.includes('building')) {
+      if (err.message?.includes('building') || err.code === 'failed-precondition') {
         setStatusMessage({
-          title: "Indeks Sedang Dibuat",
-          desc: "Firestore sedang memproses data peringkat Anda. Mohon tunggu 3-5 menit lalu segarkan halaman ini.",
+          title: "Indeks Sedang Dibuat / Diperlukan",
+          desc: "Firestore memerlukan indeks untuk menampilkan leaderboard. Mohon tunggu atau aktifkan melalui link di Console jika Anda admin.",
           type: 'info'
-        });
-      } else if (err.code === 'failed-precondition' || err.message?.includes('index')) {
-        setStatusMessage({
-          title: "Indeks Diperlukan",
-          desc: "Sistem memerlukan indeks untuk menampilkan leaderboard ini. Klik link di Console (F12) untuk mengaktifkan.",
-          type: 'error'
         });
       }
     } finally {
@@ -190,7 +187,7 @@ export default function LeaderboardPage() {
             </div>
             
             <CardContent className="p-0">
-              {loading ? (
+              {loading && leaderboard.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-20 gap-4">
                   <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary"></div>
                   <p className="text-muted-foreground font-medium">Mencari jawara...</p>
