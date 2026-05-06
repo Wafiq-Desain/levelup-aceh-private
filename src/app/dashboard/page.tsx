@@ -11,12 +11,7 @@ import { useAuth, useFirestore } from "@/firebase";
 import { signOut } from "firebase/auth";
 import { useEffect, useState, useCallback } from "react";
 import { collection, query, getDocs, orderBy, where, doc, getDoc } from "firebase/firestore";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { setDocumentNonBlocking } from "@/firebase/non-blocking-updates";
 
 export default function DashboardPage() {
   const { user, role } = useAppAuth();
@@ -31,16 +26,6 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [userProfile, setUserProfile] = useState<any>(null);
 
-  // Biodata Modal State
-  const [showBiodataDialog, setShowBiodataDialog] = useState(false);
-  const [selectedExamId, setSelectedExamId] = useState<string | null>(null);
-  const [savingBiodata, setSavingBiodata] = useState(false);
-
-  // Form Fields
-  const [studentClass, setStudentClass] = useState("");
-  const [schoolName, setSchoolName] = useState("");
-  const [phoneNumber, setPhoneNumber] = useState("");
-
   const fetchDashboardData = useCallback(async () => {
     if (!user) return;
     try {
@@ -51,9 +36,24 @@ export default function DashboardPage() {
       if (profileSnap.exists()) {
         const data = profileSnap.data();
         setUserProfile(data);
-        setStudentClass(data.class || "");
-        setSchoolName(data.schoolName || "");
-        setPhoneNumber(data.phoneNumber || "");
+        
+        // Strict Biodata Check: Redirect to complete-profile if any field is missing
+        const isComplete = !!(
+          data.displayName && 
+          data.class && 
+          data.schoolName && 
+          data.phoneNumber && 
+          data.birthDate && 
+          data.gender
+        );
+        
+        if (!isComplete && role === 'student') {
+          router.replace("/complete-profile");
+          return;
+        }
+      } else if (role === 'student') {
+        router.replace("/complete-profile");
+        return;
       }
 
       // Fetch Exams
@@ -77,7 +77,7 @@ export default function DashboardPage() {
     } finally {
       setLoading(false);
     }
-  }, [db, user, role]);
+  }, [db, user, role, router]);
 
   useEffect(() => {
     fetchDashboardData();
@@ -88,49 +88,8 @@ export default function DashboardPage() {
     router.push("/login");
   };
 
-  const isProfileComplete = () => {
-    const hasName = userProfile?.displayName || user?.displayName;
-    return !!(hasName && userProfile?.class && userProfile?.schoolName && userProfile?.phoneNumber);
-  };
-
   const handleStartExam = (examId: string) => {
-    if (!isProfileComplete()) {
-      setSelectedExamId(examId);
-      setShowBiodataDialog(true);
-    } else {
-      router.push(`/ujian/${examId}`);
-    }
-  };
-
-  const handleSaveBiodata = () => {
-    if (!studentClass || !schoolName || !phoneNumber) {
-      toast({ variant: "destructive", title: "Mohon lengkapi biodata Anda" });
-      return;
-    }
-
-    setSavingBiodata(true);
-    const profileRef = doc(db, "userProfiles", user!.uid);
-    const updatedData = {
-      class: studentClass,
-      schoolName: schoolName,
-      phoneNumber: phoneNumber,
-      updatedAt: new Date().toISOString()
-    };
-
-    setDocumentNonBlocking(profileRef, updatedData, { merge: true });
-    
-    // Update local state optimistically
-    setUserProfile((prev: any) => ({ ...prev, ...updatedData }));
-    
-    toast({ title: "Profil Diperbarui", description: "Sekarang Anda dapat memulai ujian." });
-    
-    setTimeout(() => {
-      setSavingBiodata(false);
-      setShowBiodataDialog(false);
-      if (selectedExamId) {
-        router.push(`/ujian/${selectedExamId}`);
-      }
-    }, 1000);
+    router.push(`/ujian/${examId}`);
   };
 
   const getAttemptCount = (examId: string) => {
@@ -141,6 +100,8 @@ export default function DashboardPage() {
   const averageScore = userResults.length > 0 
     ? Math.round(userResults.reduce((acc, curr) => acc + (curr.totalScore || 0), 0) / userResults.length)
     : 0;
+
+  if (loading) return <div className="flex h-screen items-center justify-center"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div></div>;
 
   return (
     <ProtectedRoute>
@@ -170,19 +131,6 @@ export default function DashboardPage() {
         <main className="container mx-auto px-4 py-8">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             <div className="lg:col-span-2 space-y-8">
-              {!loading && !isProfileComplete() && role === 'student' && (
-                <Card className="bg-amber-50 border-amber-200 shadow-sm border-l-4 border-l-amber-500">
-                  <CardContent className="pt-6 flex items-start gap-4">
-                    <Info className="h-6 w-6 text-amber-600 mt-1 shrink-0" />
-                    <div className="space-y-1">
-                      <h3 className="font-bold text-amber-900">Biodata Belum Lengkap</h3>
-                      <p className="text-sm text-amber-800">Silakan lengkapi biodata Anda (Kelas, Sekolah & No WA) agar hasil ujian dapat diproses secara resmi.</p>
-                      <Button variant="link" className="p-0 h-auto text-amber-700 font-bold underline" onClick={() => setShowBiodataDialog(true)}>Lengkapi Sekarang</Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-
               {role === 'admin' && (
                 <section className="bg-primary/5 p-6 rounded-xl border border-primary/20 shadow-inner">
                   <h2 className="text-2xl font-bold mb-4 flex items-center gap-2 text-primary">
@@ -245,13 +193,7 @@ export default function DashboardPage() {
                   <span className="text-sm font-medium text-muted-foreground">{exams.length} Tersedia</span>
                 </div>
                 
-                {loading ? (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {[1, 2].map(i => (
-                      <Card key={i} className="animate-pulse h-40 bg-muted" />
-                    ))}
-                  </div>
-                ) : exams.length > 0 ? (
+                {exams.length > 0 ? (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                     {exams.map((exam) => {
                       const attempts = getAttemptCount(exam.id);
@@ -353,51 +295,6 @@ export default function DashboardPage() {
             </div>
           </div>
         </main>
-
-        {/* Biodata Dialog */}
-        <Dialog open={showBiodataDialog} onOpenChange={setShowBiodataDialog}>
-          <DialogContent className="max-w-md">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2 text-primary">
-                <User className="h-5 w-5" /> Lengkapi Biodata Siswa
-              </DialogTitle>
-              <DialogDescription>
-                Informasi ini diperlukan agar profil Anda tercatat dengan lengkap di sistem kami.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4 py-4">
-              <div className="space-y-2">
-                <Label className="flex items-center gap-2"><GraduationCap className="h-4 w-4" /> Pilih Kelas</Label>
-                <Select value={studentClass} onValueChange={setStudentClass}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Pilih jenjang kelas" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="10 SMA">10 SMA</SelectItem>
-                    <SelectItem value="11 SMA">11 SMA</SelectItem>
-                    <SelectItem value="12 SMA">12 SMA</SelectItem>
-                    <SelectItem value="Gapyear">Gapyear / Alumni</SelectItem>
-                    <SelectItem value="Kedinasan">Kedinasan</SelectItem>
-                    <SelectItem value="Lainnya">Lainnya</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label className="flex items-center gap-2"><MapPin className="h-4 w-4" /> Asal Sekolah</Label>
-                <Input value={schoolName} onChange={(e) => setSchoolName(e.target.value)} placeholder="Contoh: SMAN 1 Banda Aceh" />
-              </div>
-              <div className="space-y-2">
-                <Label className="flex items-center gap-2"><Phone className="h-4 w-4" /> Nomor WhatsApp</Label>
-                <Input value={phoneNumber} onChange={(e) => setPhoneNumber(e.target.value)} placeholder="08123456789" />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button className="w-full bg-primary h-11 font-bold" onClick={handleSaveBiodata} disabled={savingBiodata}>
-                {savingBiodata ? "Menyimpan..." : "Simpan & Lanjut Ujian"}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
       </div>
     </ProtectedRoute>
   );

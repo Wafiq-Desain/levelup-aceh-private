@@ -10,7 +10,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import Image from "next/image";
 import { PlaceHolderImages } from "@/lib/placeholder-images";
@@ -22,9 +21,6 @@ export default function RegisterPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [studentClass, setStudentClass] = useState("");
-  const [schoolName, setSchoolName] = useState("");
-  const [phoneNumber, setPhoneNumber] = useState("");
   const [loading, setLoading] = useState(false);
   const router = useRouter();
   const { toast } = useToast();
@@ -46,15 +42,6 @@ export default function RegisterPage() {
       return;
     }
 
-    if (!studentClass || !schoolName || !phoneNumber) {
-      toast({
-        variant: "destructive",
-        title: "Biodata Belum Lengkap",
-        description: "Silakan lengkapi seluruh biodata Anda (Kelas, Sekolah, dan Nomor WA).",
-      });
-      return;
-    }
-
     setLoading(true);
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
@@ -67,19 +54,17 @@ export default function RegisterPage() {
         email: email,
         displayName: name,
         role: "student",
-        class: studentClass,
-        schoolName: schoolName,
-        phoneNumber: phoneNumber,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       });
       
       toast({
         title: "Pendaftaran Berhasil",
-        description: "Selamat datang di Level Up Aceh Private!",
+        description: "Selamat datang! Silakan lengkapi biodata Anda.",
       });
       
-      router.push("/dashboard");
+      // Redirect to complete-profile instead of dashboard
+      router.push("/complete-profile");
     } catch (error: any) {
       toast({
         variant: "destructive",
@@ -112,7 +97,8 @@ export default function RegisterPage() {
         });
       }
       
-      router.push("/dashboard");
+      // Redirect to complete-profile for all new/incomplete Google users
+      router.push("/complete-profile");
     } catch (error: any) {
       console.error("Google Auth Error:", error);
       let message = "Gagal menyambungkan dengan Google.";
@@ -174,46 +160,6 @@ export default function RegisterPage() {
                 placeholder="Nama Lengkap"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                required
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="class">Pilih Kelas</Label>
-                <Select value={studentClass} onValueChange={setStudentClass}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Pilih" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="10 SMA">10 SMA</SelectItem>
-                    <SelectItem value="11 SMA">11 SMA</SelectItem>
-                    <SelectItem value="12 SMA">12 SMA</SelectItem>
-                    <SelectItem value="Gapyear">Gapyear</SelectItem>
-                    <SelectItem value="Kedinasan">Kedinasan</SelectItem>
-                    <SelectItem value="Lainnya">Lainnya</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="phoneNumber">Nomor WA</Label>
-                <Input
-                  id="phoneNumber"
-                  type="tel"
-                  placeholder="0812..."
-                  value={phoneNumber}
-                  onChange={(e) => setPhoneNumber(e.target.value)}
-                  required
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="schoolName">Asal Sekolah</Label>
-              <Input
-                id="schoolName"
-                type="text"
-                placeholder="Contoh: SMAN 1 Banda Aceh"
-                value={schoolName}
-                onChange={(e) => setSchoolName(e.target.value)}
                 required
               />
             </div>

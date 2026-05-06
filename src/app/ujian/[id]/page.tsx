@@ -183,23 +183,25 @@ export default function UjianPage() {
       try {
         setLoading(true);
 
-        // 1. Mandatory Biodata Check (Nama, Kelas, Sekolah, WA)
+        // 1. Mandatory Biodata Check (Nama, Kelas, Sekolah, WA, Lahir, Kelamin)
         const profileSnap = await getDoc(doc(db, "userProfiles", user.uid));
         const profile = profileSnap.data();
         const hasCompleteProfile = !!(
           (profile?.displayName || user.displayName) && 
           profile?.class && 
           profile?.schoolName && 
-          profile?.phoneNumber
+          profile?.phoneNumber &&
+          profile?.birthDate &&
+          profile?.gender
         );
 
         if (!profileSnap.exists() || !hasCompleteProfile) {
             toast({
                 variant: "destructive",
                 title: "Biodata Belum Lengkap",
-                description: "Anda wajib melengkapi profil (Kelas, Sekolah, WA) sebelum memulai ujian."
+                description: "Anda wajib melengkapi profil sebelum memulai ujian."
             });
-            router.replace('/dashboard');
+            router.replace('/complete-profile');
             return;
         }
 

@@ -26,7 +26,7 @@
         },
         "class": {
           "type": "string",
-          "description": "The class or grade of the student (e.g., '12 SMA', 'Gapyear')."
+          "description": "The class or grade of the student (e.g., '10 SMA', 'Gapyear')."
         },
         "schoolName": {
           "type": "string",
@@ -35,6 +35,16 @@
         "phoneNumber": {
           "type": "string",
           "description": "Student's WhatsApp or phone number."
+        },
+        "birthDate": {
+          "type": "string",
+          "description": "Student's date of birth.",
+          "format": "date"
+        },
+        "gender": {
+          "type": "string",
+          "description": "Student's gender.",
+          "enum": ["Laki-laki", "Perempuan"]
         },
         "createdAt": {
           "type": "string",
