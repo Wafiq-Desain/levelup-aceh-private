@@ -60,16 +60,16 @@ export default function CompleteProfilePage() {
           
           // Logic pengecekan kelengkapan yang identik dengan Dashboard
           const basicComplete = !!(
-            data.displayName && 
+            (data.displayName || "").trim() && 
             data.class && 
-            data.schoolName && 
-            data.phoneNumber && 
+            (data.schoolName || "").trim() && 
+            (data.phoneNumber || "").trim() && 
             data.birthDate && 
             data.gender
           );
 
-          const isMan2 = (data.schoolName || "").toLowerCase().includes("man 2");
-          const initialClassComplete = isMan2 ? !!data.initialClass : true;
+          const isMan2 = (data.schoolName || "").trim().toLowerCase().includes("man 2");
+          const initialClassComplete = isMan2 ? !!(data.initialClass || "").trim() : true;
 
           if (basicComplete && initialClassComplete) {
             router.replace("/dashboard");
@@ -86,16 +86,22 @@ export default function CompleteProfilePage() {
     fetchProfile();
   }, [user, role, authLoading, db, router]);
 
-  const isMan2 = (schoolName || "").toLowerCase().includes("man 2");
+  const isMan2 = (schoolName || "").trim().toLowerCase().includes("man 2");
 
   const handleSave = () => {
     if (!user) return;
-    if (!name || !studentClass || !schoolName || !phoneNumber || !birthDate || !gender) {
+    
+    const cleanName = name.trim();
+    const cleanSchool = schoolName.trim();
+    const cleanPhone = phoneNumber.trim();
+    const cleanInitial = initialClass.trim();
+
+    if (!cleanName || !studentClass || !cleanSchool || !cleanPhone || !birthDate || !gender) {
       toast({ variant: "destructive", title: "Mohon lengkapi seluruh data profil Anda" });
       return;
     }
 
-    if (isMan2 && !initialClass) {
+    if (isMan2 && !cleanInitial) {
       toast({ variant: "destructive", title: "Khusus siswa MAN 2, mohon isi Inisial Kelas (contoh: F1)" });
       return;
     }
@@ -103,11 +109,11 @@ export default function CompleteProfilePage() {
     setSaving(true);
     const profileRef = doc(db, "userProfiles", user.uid);
     const updatedData = {
-      displayName: name,
+      displayName: cleanName,
       class: studentClass,
-      initialClass: isMan2 ? initialClass : "",
-      schoolName: schoolName,
-      phoneNumber: phoneNumber,
+      initialClass: isMan2 ? cleanInitial : "",
+      schoolName: cleanSchool,
+      phoneNumber: cleanPhone,
       birthDate: birthDate,
       gender: gender,
       updatedAt: new Date().toISOString()
@@ -120,13 +126,16 @@ export default function CompleteProfilePage() {
     setTimeout(() => {
       setSaving(false);
       router.replace("/dashboard");
-    }, 1000);
+    }, 1200);
   };
 
   if (authLoading || (fetchingProfile && role !== 'admin')) {
     return (
       <div className="flex h-screen items-center justify-center bg-white">
-        <Loader2 className="h-10 w-10 animate-spin text-primary" />
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="h-10 w-10 animate-spin text-primary" />
+          <p className="text-sm font-medium text-muted-foreground">Menyiapkan profil...</p>
+        </div>
       </div>
     );
   }
@@ -147,16 +156,16 @@ export default function CompleteProfilePage() {
           <CardContent className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2">
-                <Label className="flex items-center gap-2"><User className="h-4 w-4" /> Nama Lengkap</Label>
-                <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nama Lengkap Sesuai Ijazah" className="bg-white" />
+                <Label className="flex items-center gap-2 font-bold"><User className="h-4 w-4" /> Nama Lengkap</Label>
+                <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nama Lengkap Sesuai Ijazah" className="bg-white h-11" />
               </div>
               <div className="space-y-2">
-                <Label className="flex items-center gap-2"><GraduationCap className="h-4 w-4" /> Pilih Jenjang</Label>
+                <Label className="flex items-center gap-2 font-bold"><GraduationCap className="h-4 w-4" /> Pilih Jenjang</Label>
                 <Select value={studentClass} onValueChange={setStudentClass}>
-                  <SelectTrigger className="bg-white">
+                  <SelectTrigger className="bg-white h-11">
                     <SelectValue placeholder="Pilih jenjang" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent position="popper" sideOffset={4}>
                     <SelectItem value="10 SMA">10 SMA</SelectItem>
                     <SelectItem value="11 SMA">11 SMA</SelectItem>
                     <SelectItem value="12 SMA">12 SMA</SelectItem>
@@ -167,40 +176,41 @@ export default function CompleteProfilePage() {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label className="flex items-center gap-2"><CalendarIcon className="h-4 w-4" /> Tanggal Lahir</Label>
-                <Input type="date" value={birthDate} onChange={(e) => setBirthDate(e.target.value)} className="bg-white" />
+                <Label className="flex items-center gap-2 font-bold"><CalendarIcon className="h-4 w-4" /> Tanggal Lahir</Label>
+                <Input type="date" value={birthDate} onChange={(e) => setBirthDate(e.target.value)} className="bg-white h-11" />
               </div>
               <div className="space-y-2">
-                <Label className="flex items-center gap-2"><Users className="h-4 w-4" /> Jenis Kelamin</Label>
+                <Label className="flex items-center gap-2 font-bold"><Users className="h-4 w-4" /> Jenis Kelamin</Label>
                 <Select value={gender} onValueChange={setGender}>
-                  <SelectTrigger className="bg-white">
+                  <SelectTrigger className="bg-white h-11">
                     <SelectValue placeholder="Pilih Jenis Kelamin" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent position="popper" sideOffset={4}>
                     <SelectItem value="Laki-laki">Laki-laki</SelectItem>
                     <SelectItem value="Perempuan">Perempuan</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label className="flex items-center gap-2"><MapPin className="h-4 w-4" /> Asal Sekolah</Label>
-                <Input value={schoolName} onChange={(e) => setSchoolName(e.target.value)} placeholder="Contoh: MAN 2 Banda Aceh" className="bg-white" />
+                <Label className="flex items-center gap-2 font-bold"><MapPin className="h-4 w-4" /> Asal Sekolah</Label>
+                <Input value={schoolName} onChange={(e) => setSchoolName(e.target.value)} placeholder="Contoh: MAN 2 Banda Aceh" className="bg-white h-11" />
               </div>
               <div className="space-y-2">
-                <Label className="flex items-center gap-2"><Phone className="h-4 w-4" /> Nomor WhatsApp</Label>
-                <Input value={phoneNumber} onChange={(e) => setPhoneNumber(e.target.value)} placeholder="08123456789" className="bg-white" />
+                <Label className="flex items-center gap-2 font-bold"><Phone className="h-4 w-4" /> Nomor WhatsApp</Label>
+                <Input value={phoneNumber} onChange={(e) => setPhoneNumber(e.target.value)} placeholder="08123456789" className="bg-white h-11" />
               </div>
               {isMan2 && (
                 <div className={cn("space-y-2 md:col-span-2 animate-in fade-in slide-in-from-top-1")}>
                   <Label className="flex items-center gap-2 text-primary font-bold"><LayoutList className="h-4 w-4" /> Inisial Kelas (Khusus MAN 2)</Label>
-                  <Input value={initialClass} onChange={(e) => setInitialClass(e.target.value)} placeholder="Masukkan inisial kelas (Contoh: F1, F2, F3...)" className="border-primary bg-white" />
+                  <Input value={initialClass} onChange={(e) => setInitialClass(e.target.value)} placeholder="Contoh: F1, F2, F3..." className="border-primary bg-white h-11 ring-primary/20" />
+                  <p className="text-[10px] text-muted-foreground italic">*Penting: Masukkan inisial kelas Anda untuk keperluan data sekolah.</p>
                 </div>
               )}
             </div>
           </CardContent>
           <CardFooter>
-            <Button className="w-full h-12 text-lg font-bold bg-primary shadow-lg" onClick={handleSave} disabled={saving}>
-              {saving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Menyimpan...</> : "Simpan & Masuk ke Dashboard"}
+            <Button className="w-full h-12 text-lg font-bold bg-primary shadow-lg hover:shadow-xl transition-all" onClick={handleSave} disabled={saving}>
+              {saving ? <><Loader2 className="mr-2 h-5 w-5 animate-spin" /> Menyimpan...</> : "Simpan & Masuk ke Dashboard"}
             </Button>
           </CardFooter>
         </Card>

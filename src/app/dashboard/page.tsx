@@ -57,16 +57,16 @@ export default function DashboardPage() {
         // Pengecekan kelengkapan biodata hanya untuk student
         if (role === 'student') {
           const basicComplete = !!(
-            data.displayName && 
+            (data.displayName || "").trim() && 
             data.class && 
-            data.schoolName && 
-            data.phoneNumber && 
+            (data.schoolName || "").trim() && 
+            (data.phoneNumber || "").trim() && 
             data.birthDate && 
             data.gender
           );
 
-          const isMan2 = (data.schoolName || "").toLowerCase().includes("man 2");
-          const initialClassComplete = isMan2 ? !!data.initialClass : true;
+          const isMan2 = (data.schoolName || "").trim().toLowerCase().includes("man 2");
+          const initialClassComplete = isMan2 ? !!(data.initialClass || "").trim() : true;
 
           if (!basicComplete || !initialClassComplete) {
             router.replace("/complete-profile");
@@ -122,7 +122,10 @@ export default function DashboardPage() {
   if (authLoading || loading) {
     return (
       <div className="flex h-screen items-center justify-center bg-white">
-        <Loader2 className="animate-spin h-10 w-10 text-primary" />
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="animate-spin h-10 w-10 text-primary" />
+          <p className="text-sm font-medium text-muted-foreground">Menyiapkan dashboard...</p>
+        </div>
       </div>
     );
   }
