@@ -39,7 +39,7 @@ import { cn } from "@/lib/utils";
 
 export default function UjianPage() {
   const { id: examId } = useParams();
-  const { user } = useAppAuth();
+  const { user, role } = useAppAuth();
   const db = useFirestore();
   const router = useRouter();
   const { toast } = useToast();
@@ -176,7 +176,7 @@ export default function UjianPage() {
   }, [user, examId, questions, answers, db, router, toast]);
 
   useEffect(() => {
-    if (loading || isSubmitting || attemptLimitReached) return;
+    if (loading || isSubmitting || attemptLimitReached || role === 'admin') return;
     
     const handleViolation = () => {
       if (!hasSubmitted.current) {
@@ -195,44 +195,47 @@ export default function UjianPage() {
       document.removeEventListener("visibilitychange", onVisibilityChange);
       window.removeEventListener("blur", onWindowBlur);
     };
-  }, [handleSubmit, loading, isSubmitting, attemptLimitReached]);
+  }, [handleSubmit, loading, isSubmitting, attemptLimitReached, role]);
 
   useEffect(() => {
     const fetchData = async () => {
-      if (!examId || !user) return;
+      if (!examId || !user || !role) return;
       try {
         setLoading(true);
 
         const profileSnap = await getDoc(doc(db, "userProfiles", user.uid));
         const profile = profileSnap.data();
         
-        if (!profileSnap.exists()) {
-          router.replace('/complete-profile');
-          return;
-        }
-
-        const isComplete = !!(
-          profile?.displayName && 
-          profile?.class && 
-          profile?.schoolName && 
-          profile?.phoneNumber &&
-          profile?.birthDate &&
-          profile?.gender
-        );
-
-        if (!isComplete) {
+        // Pengecekan profil hanya untuk student
+        if (role === 'student') {
+          if (!profileSnap.exists()) {
             router.replace('/complete-profile');
             return;
-        }
+          }
 
-        const resultsRef = collection(db, "users", user.uid, "results");
-        const resultsQuery = query(resultsRef, where("examId", "==", examId));
-        const resultsSnap = await getDocs(resultsQuery);
-        
-        if (resultsSnap.size >= 2) {
-          setAttemptLimitReached(true);
-          setLoading(false);
-          return;
+          const isComplete = !!(
+            profile?.displayName && 
+            profile?.class && 
+            profile?.schoolName && 
+            profile?.phoneNumber &&
+            profile?.birthDate &&
+            profile?.gender
+          );
+
+          if (!isComplete) {
+              router.replace('/complete-profile');
+              return;
+          }
+
+          const resultsRef = collection(db, "users", user.uid, "results");
+          const resultsQuery = query(resultsRef, where("examId", "==", examId));
+          const resultsSnap = await getDocs(resultsQuery);
+          
+          if (resultsSnap.size >= 2) {
+            setAttemptLimitReached(true);
+            setLoading(false);
+            return;
+          }
         }
 
         const examDoc = await getDoc(doc(db, "exams", examId as string));
@@ -254,7 +257,7 @@ export default function UjianPage() {
       }
     };
     fetchData();
-  }, [examId, user, db, router]);
+  }, [examId, user, role, db, router]);
 
   useEffect(() => {
     if (loading || isSubmitting || attemptLimitReached) return;
@@ -262,17 +265,17 @@ export default function UjianPage() {
       setTimeLeft(prev => {
         if (prev <= 1) {
           clearInterval(interval);
-          handleSubmit();
+          if (role !== 'admin') handleSubmit();
           return 0;
         }
         return prev - 1;
       });
     }, 1000);
     return () => clearInterval(interval);
-  }, [loading, isSubmitting, attemptLimitReached, handleSubmit]);
+  }, [loading, isSubmitting, attemptLimitReached, handleSubmit, role]);
 
   const handleSelectAnswer = (value: string) => {
-    if (hasSubmitted.current) return;
+    if (hasSubmitted.current || role === 'admin') return;
     const qId = questions[currentIndex]?.id;
     if (!qId) return;
 
@@ -312,19 +315,21 @@ export default function UjianPage() {
           <div className="container mx-auto px-4 flex items-center justify-between">
             <div className="flex flex-col min-w-0">
               <h2 className="text-sm md:text-base font-bold text-primary truncate max-w-[150px] md:max-w-md">{exam?.title}</h2>
-              <span className="text-[9px] font-black text-destructive uppercase tracking-tighter">Strict Mode Active</span>
+              <span className="text-[9px] font-black text-destructive uppercase tracking-tighter">
+                {role === 'admin' ? "Admin Preview Mode" : "Strict Mode Active"}
+              </span>
             </div>
             
             <div className="flex items-center gap-3 md:gap-6">
               <div className={cn(
                 "flex items-center gap-1 px-3 py-1.5 rounded-full font-mono text-sm md:text-lg font-bold border",
-                timeLeft < 300 ? "bg-red-50 text-red-600 border-red-200 animate-pulse" : "bg-muted/50 text-foreground border-transparent"
+                timeLeft < 300 && role !== 'admin' ? "bg-red-50 text-red-600 border-red-200 animate-pulse" : "bg-muted/50 text-foreground border-transparent"
               )}>
                 <Clock className="h-4 w-4 md:h-5 md:w-5" />
                 {Math.floor(timeLeft / 60)}:{String(timeLeft % 60).padStart(2, '0')}
               </div>
-              <Button size="sm" variant="destructive" onClick={() => handleSubmit()} className="h-8 md:h-10 text-xs md:text-sm font-bold bg-primary">
-                SELESAI
+              <Button size="sm" variant="destructive" onClick={() => role === 'admin' ? router.push('/dashboard') : handleSubmit()} className="h-8 md:h-10 text-xs md:text-sm font-bold bg-primary">
+                {role === 'admin' ? "KELUAR PREVIEW" : "SELESAI"}
               </Button>
             </div>
           </div>
@@ -371,6 +376,7 @@ export default function UjianPage() {
                     variant="ghost" 
                     size="sm" 
                     onClick={() => {
+                      if (role === 'admin') return;
                       const qId = currentQ?.id;
                       if (qId) setAnswers(prev => ({ ...prev, [qId]: { ...prev[qId], isFlagged: !prev[qId]?.isFlagged } }));
                     }}
@@ -438,8 +444,8 @@ export default function UjianPage() {
                     LANJUT <ChevronRight className="h-4 w-4 ml-1" />
                   </Button>
                 ) : (
-                  <Button onClick={() => handleSubmit()} className="bg-green-600 hover:bg-green-700 font-bold px-6 h-10 text-xs text-white">
-                    KIRIM <CheckCircle2 className="h-4 w-4 ml-1" />
+                  <Button onClick={() => role === 'admin' ? router.push('/dashboard') : handleSubmit()} className="bg-green-600 hover:bg-green-700 font-bold px-6 h-10 text-xs text-white">
+                    {role === 'admin' ? "SELESAI PREVIEW" : "KIRIM"} <CheckCircle2 className="h-4 w-4 ml-1" />
                   </Button>
                 )}
               </CardFooter>

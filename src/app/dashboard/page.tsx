@@ -44,7 +44,7 @@ export default function DashboardPage() {
   const [userProfile, setUserProfile] = useState<any>(null);
 
   const fetchDashboardData = useCallback(async () => {
-    if (!user) return;
+    if (!user || !role) return;
     try {
       setLoading(true);
       
@@ -53,22 +53,24 @@ export default function DashboardPage() {
         const data = profileSnap.data();
         setUserProfile(data);
         
-        // Pengecekan kelengkapan biodata yang lebih aman
-        const isComplete = !!(
-          data.displayName && 
-          data.class && 
-          data.schoolName && 
-          data.phoneNumber && 
-          data.birthDate && 
-          data.gender
-        );
+        // Cek kelengkapan biodata hanya untuk student
+        if (role === 'student') {
+          const isComplete = !!(
+            data.displayName && 
+            data.class && 
+            data.schoolName && 
+            data.phoneNumber && 
+            data.birthDate && 
+            data.gender
+          );
 
-        if (!isComplete && role === 'student') {
-          router.replace("/complete-profile");
-          return;
+          if (!isComplete) {
+            router.replace("/complete-profile");
+            return;
+          }
         }
       } else if (role === 'student') {
-        // Jika dokumen profil belum ada sama sekali
+        // Jika dokumen profil belum ada sama sekali dan user adalah student
         router.replace("/complete-profile");
         return;
       }

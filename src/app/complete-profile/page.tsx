@@ -35,7 +35,13 @@ export default function CompleteProfilePage() {
   const [gender, setGender] = useState("");
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || !role) return;
+    
+    // Jika user adalah admin, tidak perlu mengisi biodata siswa
+    if (role === 'admin') {
+      router.replace("/dashboard");
+      return;
+    }
     
     const fetchProfile = async () => {
       try {
@@ -50,7 +56,6 @@ export default function CompleteProfilePage() {
           setBirthDate(data.birthDate || "");
           setGender(data.gender || "");
           
-          // Cek apakah data sudah benar-benar lengkap
           const isComplete = !!(
             data.displayName && 
             data.class && 
@@ -72,7 +77,7 @@ export default function CompleteProfilePage() {
     };
     
     fetchProfile();
-  }, [user, db, router]);
+  }, [user, role, db, router]);
 
   const isMan2 = (schoolName || "").toLowerCase().includes("man 2");
 
@@ -104,14 +109,13 @@ export default function CompleteProfilePage() {
     
     toast({ title: "Profil Disimpan", description: "Terima kasih telah melengkapi data diri Anda." });
     
-    // Redirect menggunakan replace untuk mencegah user kembali ke halaman biodata via back button
     setTimeout(() => {
       setSaving(false);
       router.replace("/dashboard");
     }, 1500);
   };
 
-  if (loading) return <div className="flex h-screen items-center justify-center"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div></div>;
+  if (loading && role !== 'admin') return <div className="flex h-screen items-center justify-center"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div></div>;
 
   return (
     <ProtectedRoute>
