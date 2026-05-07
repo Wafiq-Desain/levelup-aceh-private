@@ -13,7 +13,8 @@ import {
   Trash2,
   ShieldAlert,
   RefreshCw,
-  Loader2
+  Loader2,
+  History
 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 import { useFirestore } from "@/firebase";
@@ -25,6 +26,17 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 export default function AdminReportsPage() {
   const router = useRouter();
@@ -33,6 +45,7 @@ export default function AdminReportsPage() {
   
   const [results, setResults] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isResetting, setIsResetting] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [usersMap, setUsersMap] = useState<Record<string, any>>({});
   const [examsMap, setExamsMap] = useState<Record<string, any>>({});
@@ -123,6 +136,34 @@ export default function AdminReportsPage() {
     });
   };
 
+  const handleResetAllAttempts = async () => {
+    if (results.length === 0) return;
+    
+    setIsResetting(true);
+    try {
+      results.forEach((res) => {
+        const resultRef = doc(db, res.fullPath);
+        deleteDocumentNonBlocking(resultRef);
+      });
+      
+      toast({
+        title: "Reset Berhasil",
+        description: `Seluruh ${results.length} data percobaan telah dihapus. Semua siswa dapat mengerjakan ulang.`
+      });
+      
+      setResults([]);
+    } catch (err) {
+      console.error("Reset all error:", err);
+      toast({
+        variant: "destructive",
+        title: "Reset Gagal",
+        description: "Terjadi kesalahan saat menghapus data massal."
+      });
+    } finally {
+      setIsResetting(false);
+    }
+  };
+
   const filteredResults = results.filter(res => {
     const student = usersMap[res.studentId];
     const studentName = (student?.displayName || "Siswa Tanpa Nama").toLowerCase();
@@ -147,7 +188,34 @@ export default function AdminReportsPage() {
               <h1 className="text-xl font-bold text-primary">Laporan Hasil Ujian</h1>
             </div>
             <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={fetchData} disabled={loading}>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="destructive" size="sm" disabled={loading || results.length === 0 || isResetting}>
+                    <History className="h-4 w-4 mr-2" />
+                    Reset Seluruh Percobaan
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle className="text-destructive flex items-center gap-2">
+                      <AlertTriangle className="h-5 w-5" /> TINDAKAN BERBAHAYA!
+                    </AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Ini akan menghapus <strong>SELURUH</strong> {results.length} data nilai siswa di sistem secara permanen. 
+                      Semua siswa akan kembali memiliki 0 percobaan dan bisa mengerjakan ulang seluruh paket ujian.
+                      Tindakan ini tidak bisa dibatalkan.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Batal</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleResetAllAttempts} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                      Ya, Reset Semua Nilai
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+
+              <Button variant="outline" size="sm" onClick={fetchData} disabled={loading || isResetting}>
                 <RefreshCw className={cn("h-4 w-4 mr-2", loading && "animate-spin")} />
                 Segarkan Data
               </Button>
@@ -215,10 +283,17 @@ export default function AdminReportsPage() {
               </div>
             </CardHeader>
             <CardContent className="pt-6">
-              {loading ? (
+              {loading || isResetting ? (
                 <div className="flex flex-col items-center justify-center py-20 gap-4">
                   <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary"></div>
-                  <p className="text-muted-foreground font-medium">Sinkronisasi data...</p>
+                  <p className="text-muted-foreground font-medium">
+                    {isResetting ? "Sedang mereset data percobaan..." : "Sinkronisasi data..."}
+                  </p>
+                </div>
+              ) : results.length === 0 ? (
+                <div className="text-center py-20">
+                  <History className="h-10 w-10 text-muted-foreground mx-auto mb-2 opacity-20" />
+                  <p className="text-muted-foreground">Belum ada data nilai yang tersedia.</p>
                 </div>
               ) : (
                 <div className="overflow-x-auto">
