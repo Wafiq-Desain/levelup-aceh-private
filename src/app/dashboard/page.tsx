@@ -20,7 +20,6 @@ import {
   AlertCircle, 
   Users, 
   FileText,
-  TrendingUp,
   Trophy,
   Loader2
 } from "lucide-react";
@@ -28,7 +27,6 @@ import { useAuth, useFirestore } from "@/firebase";
 import { signOut } from "firebase/auth";
 import { useEffect, useState, useCallback } from "react";
 import { collection, query, getDocs, orderBy, where, doc, getDoc } from "firebase/firestore";
-import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 
 export default function DashboardPage() {
@@ -36,7 +34,6 @@ export default function DashboardPage() {
   const router = useRouter();
   const auth = useAuth();
   const db = useFirestore();
-  const { toast } = useToast();
 
   const [exams, setExams] = useState<any[]>([]);
   const [userResults, setUserResults] = useState<any[]>([]);
@@ -54,21 +51,14 @@ export default function DashboardPage() {
         const data = profileSnap.data();
         setUserProfile(data);
         
-        // Pengecekan kelengkapan biodata hanya untuk student
+        // Pengecekan kelengkapan biodata yang disederhanakan
         if (role === 'student') {
-          const basicComplete = !!(
-            (data.displayName || "").trim() && 
-            data.class && 
-            (data.schoolName || "").trim() && 
-            (data.phoneNumber || "").trim() && 
-            data.birthDate && 
-            data.gender
-          );
-
+          const nameComplete = !!(data.displayName || "").trim();
+          const schoolComplete = !!(data.schoolName || "").trim();
           const isMan2 = (data.schoolName || "").trim().toLowerCase().includes("man 2");
-          const initialClassComplete = isMan2 ? !!(data.initialClass || "").trim() : true;
+          const initialComplete = isMan2 ? !!(data.initialClass || "").trim() : true;
 
-          if (!basicComplete || !initialClassComplete) {
+          if (!nameComplete || !schoolComplete || !initialComplete) {
             router.replace("/complete-profile");
             return;
           }
@@ -255,8 +245,8 @@ export default function DashboardPage() {
                     <span className="text-sm font-bold uppercase">{userProfile?.displayName || "N/A"}</span>
                   </div>
                   <div className="flex flex-col gap-1">
-                    <span className="text-[10px] uppercase font-bold text-muted-foreground">Kelas & Sekolah</span>
-                    <span className="text-sm font-medium">{userProfile?.class || "-"} - {userProfile?.schoolName || "-"}</span>
+                    <span className="text-[10px] uppercase font-bold text-muted-foreground">Sekolah</span>
+                    <span className="text-sm font-medium">{userProfile?.schoolName || "-"} {userProfile?.initialClass ? `(${userProfile.initialClass})` : ""}</span>
                   </div>
                   <Separator />
                   <div className="grid grid-cols-2 gap-4">

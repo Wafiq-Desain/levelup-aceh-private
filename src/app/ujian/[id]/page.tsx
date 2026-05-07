@@ -22,7 +22,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { LatexRenderer } from "@/components/LatexRenderer";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { 
   Clock, 
@@ -31,7 +30,6 @@ import {
   CheckCircle2, 
   Flag,
   BookOpen,
-  ShieldAlert,
   AlertTriangle
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -206,23 +204,19 @@ export default function UjianPage() {
         const profileSnap = await getDoc(doc(db, "userProfiles", user.uid));
         const profile = profileSnap.data();
         
-        // Pengecekan profil hanya untuk student
         if (role === 'student') {
           if (!profileSnap.exists()) {
             router.replace('/complete-profile');
             return;
           }
 
-          const isComplete = !!(
-            profile?.displayName && 
-            profile?.class && 
-            profile?.schoolName && 
-            profile?.phoneNumber &&
-            profile?.birthDate &&
-            profile?.gender
-          );
+          // Simplified completeness check logic
+          const nameComplete = !!(profile?.displayName || "").trim();
+          const schoolComplete = !!(profile?.schoolName || "").trim();
+          const isMan2 = (profile?.schoolName || "").trim().toLowerCase().includes("man 2");
+          const initialComplete = isMan2 ? !!(profile?.initialClass || "").trim() : true;
 
-          if (!isComplete) {
+          if (!nameComplete || !schoolComplete || !initialComplete) {
               router.replace('/complete-profile');
               return;
           }
@@ -414,7 +408,6 @@ export default function UjianPage() {
                           isSelected ? "border-primary bg-primary/5" : "border-border hover:border-primary/20"
                         )}
                       >
-                        <RadioGroupItem value={label} id={`opt-${i}`} className="sr-only" />
                         <div className={cn(
                           "w-8 h-8 rounded-lg flex items-center justify-center text-xs font-black border-2 transition-colors shrink-0",
                           isSelected ? "bg-primary text-white border-primary" : "bg-muted text-muted-foreground group-hover:border-primary/30"
@@ -440,7 +433,7 @@ export default function UjianPage() {
                   <ChevronLeft className="h-4 w-4 mr-1" /> KEMBALI
                 </Button>
                 {currentIndex < questions.length - 1 ? (
-                  <Button onClick={() => setCurrentIndex(p => p + 1)} className="bg-primary font-bold px-6 h-10 text-xs">
+                  <Button onClick={() => setCurrentIndex(p => p + 1)} className="bg-primary font-bold px-6 h-10 text-xs text-white">
                     LANJUT <ChevronRight className="h-4 w-4 ml-1" />
                   </Button>
                 ) : (
