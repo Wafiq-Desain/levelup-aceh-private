@@ -21,7 +21,8 @@ import {
   Users, 
   FileText,
   TrendingUp,
-  Trophy
+  Trophy,
+  Loader2
 } from "lucide-react";
 import { useAuth, useFirestore } from "@/firebase";
 import { signOut } from "firebase/auth";
@@ -31,7 +32,7 @@ import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 
 export default function DashboardPage() {
-  const { user, role } = useAppAuth();
+  const { user, role, loading: authLoading } = useAppAuth();
   const router = useRouter();
   const auth = useAuth();
   const db = useFirestore();
@@ -53,9 +54,9 @@ export default function DashboardPage() {
         const data = profileSnap.data();
         setUserProfile(data);
         
-        // Cek kelengkapan biodata hanya untuk student
+        // Pengecekan kelengkapan biodata hanya untuk student
         if (role === 'student') {
-          const isComplete = !!(
+          const basicComplete = !!(
             data.displayName && 
             data.class && 
             data.schoolName && 
@@ -64,13 +65,15 @@ export default function DashboardPage() {
             data.gender
           );
 
-          if (!isComplete) {
+          const isMan2 = (data.schoolName || "").toLowerCase().includes("man 2");
+          const initialClassComplete = isMan2 ? !!data.initialClass : true;
+
+          if (!basicComplete || !initialClassComplete) {
             router.replace("/complete-profile");
             return;
           }
         }
       } else if (role === 'student') {
-        // Jika dokumen profil belum ada sama sekali dan user adalah student
         router.replace("/complete-profile");
         return;
       }
@@ -93,8 +96,10 @@ export default function DashboardPage() {
   }, [db, user, role, router]);
 
   useEffect(() => {
-    fetchDashboardData();
-  }, [fetchDashboardData]);
+    if (!authLoading) {
+      fetchDashboardData();
+    }
+  }, [fetchDashboardData, authLoading]);
 
   const handleSignOut = async () => {
     await signOut(auth);
@@ -114,7 +119,13 @@ export default function DashboardPage() {
     ? Math.round(userResults.reduce((acc, curr) => acc + (curr.totalScore || 0), 0) / userResults.length)
     : 0;
 
-  if (loading) return <div className="flex h-screen items-center justify-center bg-white"><div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary"></div></div>;
+  if (authLoading || loading) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-white">
+        <Loader2 className="animate-spin h-10 w-10 text-primary" />
+      </div>
+    );
+  }
 
   return (
     <ProtectedRoute>
@@ -193,7 +204,7 @@ export default function DashboardPage() {
                     const attempts = getAttemptCount(exam.id);
                     const isLimitReached = attempts >= 2;
                     return (
-                      <Card key={exam.id} className={cn("hover:shadow-lg transition-all border-none shadow-sm flex flex-col h-full", isLimitReached && "opacity-60")}>
+                      <Card key={exam.id} className={cn("hover:shadow-lg transition-all border-none shadow-sm flex flex-col h-full bg-white", isLimitReached && "opacity-60")}>
                         <CardHeader className="pb-2">
                           <div className="flex justify-between items-start gap-2">
                             <CardTitle className="text-base md:text-lg font-bold line-clamp-2">{exam.title}</CardTitle>
@@ -228,7 +239,7 @@ export default function DashboardPage() {
             </div>
 
             <div className="space-y-6">
-              <Card className="border-none shadow-lg overflow-hidden">
+              <Card className="border-none shadow-lg overflow-hidden bg-white">
                 <div className="h-1.5 bg-primary" />
                 <CardHeader className="pb-4">
                   <CardTitle className="text-base flex items-center gap-2">

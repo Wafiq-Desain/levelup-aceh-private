@@ -14,15 +14,16 @@ import { doc, getDoc } from "firebase/firestore";
 import { setDocumentNonBlocking } from "@/firebase/non-blocking-updates";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { User, GraduationCap, MapPin, Phone, Calendar as CalendarIcon, Users, LayoutList } from "lucide-react";
+import { User, GraduationCap, MapPin, Phone, Calendar as CalendarIcon, Users, LayoutList, Loader2 } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 export default function CompleteProfilePage() {
-  const { user, role } = useAppAuth();
+  const { user, role, loading: authLoading } = useAppAuth();
   const db = useFirestore();
   const { toast } = useToast();
   const router = useRouter();
 
-  const [loading, setLoading] = useState(true);
+  const [fetchingProfile, setFetchingProfile] = useState(true);
   const [saving, setSaving] = useState(false);
 
   // Form State
@@ -35,9 +36,10 @@ export default function CompleteProfilePage() {
   const [gender, setGender] = useState("");
 
   useEffect(() => {
-    if (!user || !role) return;
+    if (authLoading) return;
+    if (!user) return;
     
-    // Jika user adalah admin, tidak perlu mengisi biodata siswa
+    // Admin bypass biodata
     if (role === 'admin') {
       router.replace("/dashboard");
       return;
@@ -56,7 +58,8 @@ export default function CompleteProfilePage() {
           setBirthDate(data.birthDate || "");
           setGender(data.gender || "");
           
-          const isComplete = !!(
+          // Logic pengecekan kelengkapan yang identik dengan Dashboard
+          const basicComplete = !!(
             data.displayName && 
             data.class && 
             data.schoolName && 
@@ -65,23 +68,28 @@ export default function CompleteProfilePage() {
             data.gender
           );
 
-          if (isComplete) {
+          const isMan2 = (data.schoolName || "").toLowerCase().includes("man 2");
+          const initialClassComplete = isMan2 ? !!data.initialClass : true;
+
+          if (basicComplete && initialClassComplete) {
             router.replace("/dashboard");
+            return;
           }
         }
       } catch (err) {
         console.error("Error fetching profile:", err);
       } finally {
-        setLoading(false);
+        setFetchingProfile(false);
       }
     };
     
     fetchProfile();
-  }, [user, role, db, router]);
+  }, [user, role, authLoading, db, router]);
 
   const isMan2 = (schoolName || "").toLowerCase().includes("man 2");
 
   const handleSave = () => {
+    if (!user) return;
     if (!name || !studentClass || !schoolName || !phoneNumber || !birthDate || !gender) {
       toast({ variant: "destructive", title: "Mohon lengkapi seluruh data profil Anda" });
       return;
@@ -93,7 +101,7 @@ export default function CompleteProfilePage() {
     }
 
     setSaving(true);
-    const profileRef = doc(db, "userProfiles", user!.uid);
+    const profileRef = doc(db, "userProfiles", user.uid);
     const updatedData = {
       displayName: name,
       class: studentClass,
@@ -112,15 +120,21 @@ export default function CompleteProfilePage() {
     setTimeout(() => {
       setSaving(false);
       router.replace("/dashboard");
-    }, 1500);
+    }, 1000);
   };
 
-  if (loading && role !== 'admin') return <div className="flex h-screen items-center justify-center"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div></div>;
+  if (authLoading || (fetchingProfile && role !== 'admin')) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-white">
+        <Loader2 className="h-10 w-10 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <ProtectedRoute>
       <div className="min-h-screen bg-muted/30 flex items-center justify-center p-4">
-        <Card className="w-full max-w-xl shadow-2xl border-t-8 border-primary">
+        <Card className="w-full max-w-xl shadow-2xl border-t-8 border-primary bg-white">
           <CardHeader className="text-center">
             <div className="mx-auto w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mb-4">
               <User className="h-8 w-8 text-primary" />
@@ -134,12 +148,12 @@ export default function CompleteProfilePage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2">
                 <Label className="flex items-center gap-2"><User className="h-4 w-4" /> Nama Lengkap</Label>
-                <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nama Lengkap Sesuai Ijazah" />
+                <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nama Lengkap Sesuai Ijazah" className="bg-white" />
               </div>
               <div className="space-y-2">
                 <Label className="flex items-center gap-2"><GraduationCap className="h-4 w-4" /> Pilih Jenjang</Label>
                 <Select value={studentClass} onValueChange={setStudentClass}>
-                  <SelectTrigger>
+                  <SelectTrigger className="bg-white">
                     <SelectValue placeholder="Pilih jenjang" />
                   </SelectTrigger>
                   <SelectContent>
@@ -154,12 +168,12 @@ export default function CompleteProfilePage() {
               </div>
               <div className="space-y-2">
                 <Label className="flex items-center gap-2"><CalendarIcon className="h-4 w-4" /> Tanggal Lahir</Label>
-                <Input type="date" value={birthDate} onChange={(e) => setBirthDate(e.target.value)} />
+                <Input type="date" value={birthDate} onChange={(e) => setBirthDate(e.target.value)} className="bg-white" />
               </div>
               <div className="space-y-2">
                 <Label className="flex items-center gap-2"><Users className="h-4 w-4" /> Jenis Kelamin</Label>
                 <Select value={gender} onValueChange={setGender}>
-                  <SelectTrigger>
+                  <SelectTrigger className="bg-white">
                     <SelectValue placeholder="Pilih Jenis Kelamin" />
                   </SelectTrigger>
                   <SelectContent>
@@ -170,23 +184,23 @@ export default function CompleteProfilePage() {
               </div>
               <div className="space-y-2">
                 <Label className="flex items-center gap-2"><MapPin className="h-4 w-4" /> Asal Sekolah</Label>
-                <Input value={schoolName} onChange={(e) => setSchoolName(e.target.value)} placeholder="Contoh: MAN 2 Banda Aceh" />
+                <Input value={schoolName} onChange={(e) => setSchoolName(e.target.value)} placeholder="Contoh: MAN 2 Banda Aceh" className="bg-white" />
               </div>
               <div className="space-y-2">
                 <Label className="flex items-center gap-2"><Phone className="h-4 w-4" /> Nomor WhatsApp</Label>
-                <Input value={phoneNumber} onChange={(e) => setPhoneNumber(e.target.value)} placeholder="08123456789" />
+                <Input value={phoneNumber} onChange={(e) => setPhoneNumber(e.target.value)} placeholder="08123456789" className="bg-white" />
               </div>
               {isMan2 && (
-                <div className="space-y-2 md:col-span-2 animate-in fade-in slide-in-from-top-1">
+                <div className={cn("space-y-2 md:col-span-2 animate-in fade-in slide-in-from-top-1")}>
                   <Label className="flex items-center gap-2 text-primary font-bold"><LayoutList className="h-4 w-4" /> Inisial Kelas (Khusus MAN 2)</Label>
-                  <Input value={initialClass} onChange={(e) => setInitialClass(e.target.value)} placeholder="Masukkan inisial kelas (Contoh: F1, F2, F3...)" className="border-primary" />
+                  <Input value={initialClass} onChange={(e) => setInitialClass(e.target.value)} placeholder="Masukkan inisial kelas (Contoh: F1, F2, F3...)" className="border-primary bg-white" />
                 </div>
               )}
             </div>
           </CardContent>
           <CardFooter>
             <Button className="w-full h-12 text-lg font-bold bg-primary shadow-lg" onClick={handleSave} disabled={saving}>
-              {saving ? "Menyimpan..." : "Simpan & Masuk ke Dashboard"}
+              {saving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Menyimpan...</> : "Simpan & Masuk ke Dashboard"}
             </Button>
           </CardFooter>
         </Card>
