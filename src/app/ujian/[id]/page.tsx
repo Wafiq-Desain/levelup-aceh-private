@@ -210,7 +210,6 @@ export default function UjianPage() {
             return;
           }
 
-          // Simplified completeness check logic
           const nameComplete = !!(profile?.displayName || "").trim();
           const schoolComplete = !!(profile?.schoolName || "").trim();
           const isMan2 = (profile?.schoolName || "").trim().toLowerCase().includes("man 2");
@@ -343,7 +342,7 @@ export default function UjianPage() {
                 <div className="grid grid-cols-5 md:grid-cols-5 gap-2">
                   {questions.map((q, i) => (
                     <button 
-                      key={i} 
+                      key={`nav-${i}`} 
                       onClick={() => setCurrentIndex(i)} 
                       className={cn(
                         "h-9 md:h-10 rounded text-xs font-bold transition-all border flex items-center justify-center relative",
@@ -401,7 +400,7 @@ export default function UjianPage() {
                     const isSelected = answers[currentQ?.id]?.choice === label;
                     return (
                       <div 
-                        key={i} 
+                        key={`opt-${i}`} 
                         onClick={() => handleSelectAnswer(label)}
                         className={cn(
                           "flex items-center gap-3 p-4 rounded-xl border-2 transition-all cursor-pointer bg-white group",

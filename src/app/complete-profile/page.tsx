@@ -45,15 +45,14 @@ export default function CompleteProfilePage() {
         const docSnap = await getDoc(doc(db, "userProfiles", user.uid));
         if (docSnap.exists()) {
           const data = docSnap.data();
-          setName(data.displayName || user.displayName || "");
-          setSchoolName(data.schoolName || "");
-          setInitialClass(data.initialClass || "");
+          setName(data?.displayName || user?.displayName || "");
+          setSchoolName(data?.schoolName || "");
+          setInitialClass(data?.initialClass || "");
           
-          // Logic pengecekan kelengkapan yang baru (Hanya Nama, Sekolah, & Initial khusus MAN 2)
-          const nameComplete = !!(data.displayName || "").trim();
-          const schoolComplete = !!(data.schoolName || "").trim();
-          const isMan2 = (data.schoolName || "").trim().toLowerCase().includes("man 2");
-          const initialComplete = isMan2 ? !!(data.initialClass || "").trim() : true;
+          const nameComplete = !!(data?.displayName || "").trim();
+          const schoolComplete = !!(data?.schoolName || "").trim();
+          const isMan2 = (data?.schoolName || "").trim().toLowerCase().includes("man 2");
+          const initialComplete = isMan2 ? !!(data?.initialClass || "").trim() : true;
 
           if (nameComplete && schoolComplete && initialComplete) {
             router.replace("/dashboard");

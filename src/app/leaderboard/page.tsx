@@ -51,12 +51,11 @@ export default function LeaderboardPage() {
     setStatusMessage(null);
     
     try {
-      // Step A: Get top scores
       const q = query(
         collectionGroup(db, "results"),
         where("examId", "==", selectedExamId),
         orderBy("totalScore", "desc"),
-        limit(50) // Get enough to deduplicate
+        limit(100)
       );
       
       const snap = await getDocs(q);
@@ -85,15 +84,15 @@ export default function LeaderboardPage() {
       const top10 = uniqueResults.slice(0, 10);
       setLeaderboard(top10);
 
-      // Step B: Fetch only profiles for these top 10 (Compliance with Security Rules)
-      const profilesMap: Record<string, any> = { ...usersMap };
+      // Fetch profiles only for those in Top 10
+      const currentProfilesMap = { ...usersMap };
       const profilePromises = top10
-        .filter(res => !profilesMap[res.studentId]) // Only fetch what we don't have
+        .filter(res => !currentProfilesMap[res.studentId])
         .map(async (res) => {
           try {
             const pSnap = await getDoc(doc(db, "userProfiles", res.studentId));
             if (pSnap.exists()) {
-              profilesMap[res.studentId] = pSnap.data();
+              currentProfilesMap[res.studentId] = pSnap.data();
             }
           } catch (e) {
             console.warn(`Could not fetch profile for ${res.studentId}`);
@@ -101,21 +100,21 @@ export default function LeaderboardPage() {
         });
 
       await Promise.all(profilePromises);
-      setUsersMap(profilesMap);
+      setUsersMap(currentProfilesMap);
 
     } catch (err: any) {
       console.error("Leaderboard fetch error:", err);
       if (err.message?.includes('building') || err.code === 'failed-precondition') {
         setStatusMessage({
-          title: "Indeks Sedang Dibuat / Diperlukan",
-          desc: "Firestore memerlukan indeks untuk menampilkan leaderboard. Mohon tunggu atau aktifkan melalui link di Console jika Anda admin.",
+          title: "Indeks Sedang Dibuat",
+          desc: "Firestore memerlukan waktu beberapa menit untuk memproses data peringkat.",
           type: 'info'
         });
       }
     } finally {
       setLoading(false);
     }
-  }, [db, selectedExamId]);
+  }, [db, selectedExamId, usersMap]);
 
   useEffect(() => {
     fetchLeaderboard();
@@ -178,8 +177,8 @@ export default function LeaderboardPage() {
                 <div className="flex items-center gap-3">
                   <Medal className="h-8 w-8 text-secondary" />
                   <div>
-                    <h2 className="text-2xl font-black tracking-tight">TOP 10 TERBAIK</h2>
-                    <p className="text-white/60 text-xs font-bold uppercase tracking-widest">Global Ranking</p>
+                    <h2 className="text-2xl font-black tracking-tight uppercase">TOP 10 TERBAIK</h2>
+                    <p className="text-white/60 text-[10px] font-bold uppercase tracking-widest">Global Ranking</p>
                   </div>
                 </div>
                 <Star className="h-10 w-10 text-secondary/30 animate-pulse" />
@@ -214,7 +213,7 @@ export default function LeaderboardPage() {
                         const rank = index + 1;
                         
                         return (
-                          <TableRow key={`${res.id}-${index}`} className={cn(
+                          <TableRow key={`rank-${rank}-${res.id}`} className={cn(
                             "group hover:bg-primary/5 transition-colors border-b",
                             rank === 1 && "bg-secondary/10",
                             rank === 2 && "bg-blue-50/10",

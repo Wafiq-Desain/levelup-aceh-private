@@ -51,12 +51,11 @@ export default function DashboardPage() {
         const data = profileSnap.data();
         setUserProfile(data);
         
-        // Pengecekan kelengkapan biodata yang disederhanakan
         if (role === 'student') {
-          const nameComplete = !!(data.displayName || "").trim();
-          const schoolComplete = !!(data.schoolName || "").trim();
-          const isMan2 = (data.schoolName || "").trim().toLowerCase().includes("man 2");
-          const initialComplete = isMan2 ? !!(data.initialClass || "").trim() : true;
+          const nameComplete = !!(data?.displayName || "").trim();
+          const schoolComplete = !!(data?.schoolName || "").trim();
+          const isMan2 = (data?.schoolName || "").trim().toLowerCase().includes("man 2");
+          const initialComplete = isMan2 ? !!(data?.initialClass || "").trim() : true;
 
           if (!nameComplete || !schoolComplete || !initialComplete) {
             router.replace("/complete-profile");
