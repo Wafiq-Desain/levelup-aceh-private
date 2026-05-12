@@ -25,7 +25,7 @@ export default function CompleteProfilePage() {
   const [fetchingProfile, setFetchingProfile] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  // Simplified Form State
+  // Form State
   const [name, setName] = useState("");
   const [schoolName, setSchoolName] = useState("");
   const [initialClass, setInitialClass] = useState("");
@@ -49,6 +49,7 @@ export default function CompleteProfilePage() {
           setSchoolName(data?.schoolName || "");
           setInitialClass(data?.initialClass || "");
           
+          // Cek Kelengkapan (Harus sama dengan DashboardPage)
           const nameComplete = !!(data?.displayName || "").trim();
           const schoolComplete = !!(data?.schoolName || "").trim();
           const isMan2 = (data?.schoolName || "").trim().toLowerCase().includes("man 2");

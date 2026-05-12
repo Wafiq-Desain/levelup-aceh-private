@@ -49,7 +49,6 @@ export default function LoginPage() {
     setLoading(true);
     try {
       const provider = new GoogleAuthProvider();
-      // Gunakan signInWithPopup untuk lingkungan web
       const result = await signInWithPopup(auth, provider);
       const user = result.user;
       
@@ -88,7 +87,7 @@ export default function LoginPage() {
 
   return (
     <div className="relative flex min-h-screen items-center justify-center bg-muted p-4">
-      {bg?.imageUrl && bg.imageUrl.startsWith('http') && (
+      {bg?.imageUrl && (
         <div className="absolute inset-0 z-0">
           <Image 
             src={bg.imageUrl} 
@@ -104,7 +103,7 @@ export default function LoginPage() {
       <Card className="relative z-10 w-full max-w-md shadow-2xl border-t-8 border-primary overflow-hidden">
         <CardHeader className="text-center space-y-4 pt-10">
           <div className="mx-auto w-24 h-24 relative rounded-full overflow-hidden bg-white p-1 shadow-inner">
-            {logo?.imageUrl && logo.imageUrl.startsWith('http') ? (
+            {logo?.imageUrl ? (
               <Image 
                 src={logo.imageUrl} 
                 alt="Level Up Aceh Logo" 
@@ -113,7 +112,7 @@ export default function LoginPage() {
                 data-ai-hint="educational logo"
               />
             ) : (
-              <div className="w-full h-full flex items-center justify-center bg-primary/10 text-primary font-bold">LU</div>
+              <div className="w-full h-full flex items-center justify-center bg-primary/10 text-primary font-bold text-2xl">LU</div>
             )}
           </div>
           <div>

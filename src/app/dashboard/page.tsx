@@ -47,24 +47,31 @@ export default function DashboardPage() {
       setLoading(true);
       
       const profileSnap = await getDoc(doc(db, "userProfiles", user.uid));
-      if (profileSnap.exists()) {
+      
+      if (role === 'student') {
+        if (!profileSnap.exists()) {
+          router.replace("/complete-profile");
+          return;
+        }
+
         const data = profileSnap.data();
         setUserProfile(data);
         
-        if (role === 'student') {
-          const nameComplete = !!(data?.displayName || "").trim();
-          const schoolComplete = !!(data?.schoolName || "").trim();
-          const isMan2 = (data?.schoolName || "").trim().toLowerCase().includes("man 2");
-          const initialComplete = isMan2 ? !!(data?.initialClass || "").trim() : true;
+        // Cek Kelengkapan Biodata (Harus sama dengan CompleteProfilePage)
+        const nameComplete = !!(data?.displayName || "").trim();
+        const schoolComplete = !!(data?.schoolName || "").trim();
+        const isMan2 = (data?.schoolName || "").trim().toLowerCase().includes("man 2");
+        const initialComplete = isMan2 ? !!(data?.initialClass || "").trim() : true;
 
-          if (!nameComplete || !schoolComplete || !initialComplete) {
-            router.replace("/complete-profile");
-            return;
-          }
+        if (!nameComplete || !schoolComplete || !initialComplete) {
+          router.replace("/complete-profile");
+          return;
         }
-      } else if (role === 'student') {
-        router.replace("/complete-profile");
-        return;
+      } else {
+        // Admin Profile
+        if (profileSnap.exists()) {
+          setUserProfile(profileSnap.data());
+        }
       }
 
       const examsSnapshot = await getDocs(query(collection(db, "exams")));
