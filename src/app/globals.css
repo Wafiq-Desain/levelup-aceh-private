@@ -36,7 +36,7 @@
   }
 }
 
-/* SUPER STRIKT PROTECTION */
+/* SUPER STRICT PROTECTION */
 .no-select {
   -webkit-touch-callout: none !important;
   -webkit-user-select: none !important;
@@ -70,15 +70,21 @@
   flex-wrap: wrap;
   justify-content: space-around;
   align-content: space-around;
-  opacity: 0.05;
+  opacity: 0.05; /* Sangat samar agar tidak mengganggu bacaan */
   overflow: hidden;
 }
 
 .watermark-text {
   transform: rotate(-30deg);
-  font-size: 14px;
-  font-weight: bold;
+  font-size: 12px;
+  font-weight: 800;
   color: #000;
   white-space: nowrap;
-  padding: 40px;
+  padding: 50px;
+  text-transform: uppercase;
+}
+
+/* Disable Blue Highlight on Mobile */
+* {
+  -webkit-tap-highlight-color: transparent;
 }
