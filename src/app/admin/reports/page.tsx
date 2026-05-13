@@ -14,23 +14,21 @@ import {
   Trash2,
   ShieldAlert,
   RefreshCw,
-  Loader2,
   History,
   TrendingUp,
   UserCheck,
   AlertCircle,
-  Users,
-  Copy
+  Copy,
+  Clock
 } from "lucide-react";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useFirestore } from "@/firebase";
-import { collection, collectionGroup, getDocs, query, orderBy, doc, where } from "firebase/firestore";
+import { collection, collectionGroup, getDocs, query, orderBy, doc } from "firebase/firestore";
 import { deleteDocumentNonBlocking } from "@/firebase/non-blocking-updates";
 import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
 import {
   AlertDialog,
@@ -54,17 +52,13 @@ export default function AdminReportsPage() {
   const [results, setResults] = useState<any[]>([]);
   const [allAnswers, setAllAnswers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [isResetting, setIsResetting] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedExamId, setSelectedExamId] = useState<string>("all");
   const [usersMap, setUsersMap] = useState<Record<string, any>>({});
   const [examsMap, setExamsMap] = useState<Record<string, any>>({});
-  const [statusMessage, setStatusMessage] = useState<{title: string, desc: string, type: 'error' | 'info'} | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    setStatusMessage(null);
-    
     try {
       const usersSnap = await getDocs(collection(db, "userProfiles"));
       const uMap: Record<string, any> = {};
@@ -96,9 +90,6 @@ export default function AdminReportsPage() {
 
     } catch (err: any) {
       console.error("Error fetching reports:", err);
-      if (err.message?.includes('building')) {
-        setStatusMessage({ title: "Indeks Sedang Dibuat", desc: "Firestore sedang memproses data laporan.", type: 'info' });
-      }
     } finally {
       setLoading(false);
     }
@@ -108,27 +99,19 @@ export default function AdminReportsPage() {
     fetchData();
   }, [fetchData]);
 
-  // ANALYTICS ENGINE: Categorize A, B, C with Advanced Duplicate Account Detection
   const analyticsData = useMemo(() => {
     if (results.length === 0) return [];
 
     const examResults = selectedExamId === "all" ? results : results.filter(r => r.examId === selectedExamId);
     
-    /**
-     * NORMALISASI NAMA AGRESIF
-     * 1. Lowercase & Trim
-     * 2. Hapus semua karakter non-huruf (spasi, angka, simbol)
-     * 3. Ciutkan huruf berulang (e.g., 'furqann' -> 'furqan', 'sayedd' -> 'sayed')
-     */
     const normalizeName = (name: string) => {
       return (name || "")
         .toLowerCase()
         .trim()
-        .replace(/[^a-z]/g, '') // Hanya simpan huruf a-z
-        .replace(/(.)\1+/g, '$1'); // Ganti huruf berulang berurutan menjadi satu huruf saja
+        .replace(/[^a-z]/g, '')
+        .replace(/(.)\1+/g, '$1');
     };
 
-    // Kelompokkan user berdasarkan kunci normalisasi untuk deteksi nama mirip
     const normalizedNameGroups: Record<string, string[]> = {};
     Object.entries(usersMap).forEach(([uid, profile]) => {
       const normKey = normalizeName(profile.displayName);
@@ -143,13 +126,19 @@ export default function AdminReportsPage() {
       let riskReasons: string[] = [];
       const studentAnswers = allAnswers.filter(a => a.resultId === res.id);
       
-      // Indikator 1: Kecepatan vs Akurasi (IRT Tinggi tanpa warning HP)
-      if (res.totalScore > 90 && res.antiCheatWarningCount === 0) {
+      // Indikator 1: Kecepatan pengerjaan (Baru: < 30 menit & Skor > 60)
+      const durationSeconds = res.durationSeconds || 0;
+      const durationMinutes = Math.floor(durationSeconds / 60);
+      
+      if (durationMinutes > 0 && durationMinutes < 30 && res.totalScore > 60) {
+        riskScore += 2;
+        riskReasons.push(`Pengerjaan Sangat Cepat (${durationMinutes}m) dengan Skor Tinggi`);
+      } else if (res.totalScore > 90 && res.antiCheatWarningCount === 0) {
         riskScore += 1;
-        riskReasons.push("Kecepatan & Akurasi janggal");
+        riskReasons.push("Akurasi Sempurna tanpa Warning");
       }
 
-      // Indikator 2: Kemiripan Pola Kesalahan (Mencari kemiripan jawaban salah dengan siswa lain)
+      // Indikator 2: Kemiripan Pola Kesalahan
       const myWrongAnswers = studentAnswers.filter(a => !a.isCorrect).map(a => `${a.questionId}_${a.chosenAnswerIndex}`);
       let maxSharedWrongs = 0;
       const resultsByExam = results.filter(r => r.examId === res.examId && r.id !== res.id);
@@ -162,27 +151,26 @@ export default function AdminReportsPage() {
 
       if (maxSharedWrongs >= 3) {
         riskScore += 2;
-        riskReasons.push("Pola kesalahan identik");
+        riskReasons.push("Pola kesalahan identik dengan siswa lain");
       }
       
-      // Indikator 3: Deteksi HP/Fokus Layar
+      // Indikator 3: Deteksi Fokus Layar
       if (res.antiCheatWarningCount > 0) {
         riskScore += 1;
-        riskReasons.push("Pelanggaran Fokus Layar");
+        riskReasons.push("Pelanggaran Fokus Layar Terdeteksi");
       }
 
-      // Indikator 4: Deteksi Akun Ganda (Fuzzy Matching Nama)
+      // Indikator 4: Deteksi Akun Ganda
       const studentProfile = usersMap[res.studentId];
       const normNameKey = normalizeName(studentProfile?.displayName || "");
       const similarAccounts = normalizedNameGroups[normNameKey] || [];
       const isDuplicateName = similarAccounts.length > 1;
       
       if (isDuplicateName) {
-        riskScore += 3; // Risiko Kritis
+        riskScore += 3;
         riskReasons.push(`Indikasi Akun Ganda (${similarAccounts.length} identitas mirip)`);
       }
 
-      // Klasifikasi Akhir
       let category: 'A' | 'B' | 'C' = 'A';
       if (riskScore >= 3) category = 'C';
       else if (riskScore >= 1) category = 'B';
@@ -193,7 +181,8 @@ export default function AdminReportsPage() {
         riskScore,
         riskReasons,
         sharedWrongs: maxSharedWrongs,
-        isDuplicateName
+        isDuplicateName,
+        durationMinutes
       };
     });
   }, [results, allAnswers, selectedExamId, usersMap]);
@@ -206,11 +195,16 @@ export default function AdminReportsPage() {
   };
 
   const handleResetAllAttempts = async () => {
-    setIsResetting(true);
     results.forEach((res) => deleteDocumentNonBlocking(doc(db, res.fullPath)));
     toast({ title: "Reset Berhasil", description: "Seluruh data percobaan telah dihapus." });
     setResults([]);
-    setIsResetting(false);
+  };
+
+  const formatDuration = (secs: number) => {
+    if (!secs) return "N/A";
+    const m = Math.floor(secs / 60);
+    const s = secs % 60;
+    return `${m}m ${s}s`;
   };
 
   const filteredOverview = results.filter(res => {
@@ -283,11 +277,6 @@ export default function AdminReportsPage() {
                       <p className="text-[10px] font-bold text-muted-foreground uppercase">Total Selesai</p>
                       <p className="text-xl font-black text-primary">{results.length}</p>
                     </div>
-                    <div className="w-px bg-border h-8 self-center" />
-                    <div>
-                      <p className="text-[10px] font-bold text-muted-foreground uppercase">Pelanggaran HP</p>
-                      <p className="text-xl font-black text-destructive">{results.reduce((acc, curr) => acc + (curr.antiCheatWarningCount || 0), 0)}</p>
-                    </div>
                   </div>
                 </div>
 
@@ -298,6 +287,7 @@ export default function AdminReportsPage() {
                         <TableRow>
                           <TableHead>SISWA</TableHead>
                           <TableHead>PAKET UJIAN</TableHead>
+                          <TableHead className="text-center">WAKTU</TableHead>
                           <TableHead className="text-center">SKOR IRT</TableHead>
                           <TableHead className="text-center">STATUS HP</TableHead>
                           <TableHead className="text-right">AKSI</TableHead>
@@ -313,6 +303,9 @@ export default function AdminReportsPage() {
                               </div>
                             </TableCell>
                             <TableCell className="text-sm font-medium">{examsMap[res.examId]?.title}</TableCell>
+                            <TableCell className="text-center font-mono text-xs">
+                              {formatDuration(res.durationSeconds)}
+                            </TableCell>
                             <TableCell className="text-center">
                               <Badge className="bg-primary text-white font-black">{res.totalScore}</Badge>
                             </TableCell>
@@ -411,8 +404,8 @@ export default function AdminReportsPage() {
                         <TableRow>
                           <TableHead>SISWA</TableHead>
                           <TableHead className="text-center">STATUS</TableHead>
+                          <TableHead className="text-center">WAKTU</TableHead>
                           <TableHead>FAKTOR RISIKO</TableHead>
-                          <TableHead className="text-center">KEMIRIPAN JAWABAN</TableHead>
                           <TableHead className="text-center">SKOR</TableHead>
                         </TableRow>
                       </TableHeader>
@@ -438,6 +431,14 @@ export default function AdminReportsPage() {
                                 {res.category === 'A' ? 'CLEAN' : res.category === 'B' ? 'WARNED' : 'SUSPECT'}
                               </Badge>
                             </TableCell>
+                            <TableCell className="text-center">
+                              <div className="flex flex-col items-center">
+                                <Clock className={cn("h-4 w-4 mb-1", res.durationMinutes < 30 ? "text-red-500" : "text-muted-foreground")} />
+                                <span className={cn("text-xs font-bold", res.durationMinutes < 30 ? "text-red-600" : "text-foreground")}>
+                                  {res.durationMinutes} mnt
+                                </span>
+                              </div>
+                            </TableCell>
                             <TableCell className="text-xs">
                               <div className="space-y-1">
                                 {res.riskReasons.map((reason: string, idx: number) => (
@@ -445,7 +446,7 @@ export default function AdminReportsPage() {
                                     "flex items-center gap-1 font-medium",
                                     res.category === 'C' ? "text-red-700" : "text-amber-700"
                                   )}>
-                                    {reason.includes("Akun Ganda") ? <Copy className="h-3 w-3" /> : <AlertTriangle className="h-3 w-3" />}
+                                    <AlertTriangle className="h-3 w-3" />
                                     {reason}
                                   </div>
                                 ))}
@@ -454,14 +455,6 @@ export default function AdminReportsPage() {
                                     <UserCheck className="h-3 w-3" /> Wajar & Natural
                                   </div>
                                 )}
-                              </div>
-                            </TableCell>
-                            <TableCell className="text-center">
-                              <div className="flex flex-col items-center">
-                                <span className={cn("text-lg font-black", res.sharedWrongs >= 3 ? "text-red-600" : "text-muted-foreground")}>
-                                  {res.sharedWrongs} Opsi
-                                </span>
-                                <span className="text-[8px] uppercase font-bold text-muted-foreground tracking-tighter">Sama-Sama Salah</span>
                               </div>
                             </TableCell>
                             <TableCell className="text-center">

@@ -51,6 +51,7 @@ export default function UjianPage() {
   const [isBlurred, setIsBlurred] = useState(false);
   const [loading, setLoading] = useState(true);
   const [timeLeft, setTimeLeft] = useState(3600);
+  const [startTime, setStartTime] = useState<number | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [attemptLimitReached, setAttemptLimitReached] = useState(false);
   
@@ -76,7 +77,6 @@ export default function UjianPage() {
       }
     };
 
-    // Block Pinch-to-Zoom gestures
     const preventPinchZoom = (e: any) => {
       if (e.touches && e.touches.length > 1) {
         e.preventDefault();
@@ -94,7 +94,7 @@ export default function UjianPage() {
     };
   }, []);
 
-  // 2. INPUT PROTECTION: Blokir Klik Kanan, Seleksi, Copy-Paste, Drag, Print, Zoom
+  // 2. INPUT PROTECTION
   useEffect(() => {
     const preventDefault = (e: Event) => e.preventDefault();
     
@@ -120,7 +120,6 @@ export default function UjianPage() {
       }
     };
 
-    // Block Mouse Wheel Zoom (Ctrl + Wheel)
     const handleWheel = (e: WheelEvent) => {
       if (e.ctrlKey) {
         e.preventDefault();
@@ -160,7 +159,7 @@ export default function UjianPage() {
 
   // 3. SUBMIT LOGIC
   const handleSubmit = useCallback(async (isAuto = false, reason = "") => {
-    if (!user || !examId || hasSubmitted.current) return;
+    if (!user || !examId || hasSubmitted.current || !startTime) return;
     hasSubmitted.current = true;
     setIsSubmitting(true);
     
@@ -186,6 +185,9 @@ export default function UjianPage() {
       });
 
       const irtScore = totalMaxWeight > 0 ? Math.round((totalEarnedWeight / totalMaxWeight) * 100) : 0;
+      const endTime = new Date().getTime();
+      const durationSeconds = Math.floor((endTime - startTime) / 1000);
+      
       const attemptTimestamp = new Date().getTime();
       const resultRef = doc(db, "users", user.uid, "results", `${examId}_${attemptTimestamp}`);
       
@@ -203,6 +205,7 @@ export default function UjianPage() {
         antiCheatWarningCount: isAuto ? 1 : 0,
         isAutoSubmitted: isAuto,
         autoSubmitReason: reason,
+        durationSeconds: durationSeconds,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       };
@@ -223,9 +226,9 @@ export default function UjianPage() {
       setIsSubmitting(false);
       hasSubmitted.current = false;
     }
-  }, [user, examId, questions, answers, db, router, toast]);
+  }, [user, examId, questions, answers, db, router, toast, startTime]);
 
-  // 4. HP/MOBILE PROTECTION: Deteksi Layar Terbagi, Ganti Aplikasi, Zooming
+  // 4. HP/MOBILE PROTECTION
   useEffect(() => {
     if (loading || isSubmitting || attemptLimitReached || role === 'admin') return;
     
@@ -237,23 +240,19 @@ export default function UjianPage() {
     };
 
     const onVisibilityChange = () => { if (document.hidden) handleViolation("Keluar Tab/Ganti Aplikasi"); };
-    const onWindowBlur = () => { if (!hasSubmitted.current) handleViolation("Layar Kehilangan Fokus (Notifikasi/Sistem)"); };
+    const onWindowBlur = () => { if (!hasSubmitted.current) handleViolation("Layar Kehilangan Fokus"); };
     
     const onResize = () => {
-      // Detection for Split Screen
       const screenHeight = window.screen.availHeight;
       const currentHeight = window.innerHeight;
-      const ratio = currentHeight / screenHeight;
-
-      if (ratio < 0.65) {
+      if ((currentHeight / screenHeight) < 0.65) {
         handleViolation("Upaya Layar Terbagi (Split Screen)");
       }
     };
 
-    // Advanced Zoom Detection via Visual Viewport API
     const handleViewportChange = () => {
       if (window.visualViewport && window.visualViewport.scale > 1.05) {
-        handleViolation("Upaya Perbesaran Layar (Zooming) Terdeteksi");
+        handleViolation("Upaya Perbesaran Layar (Zooming)");
       }
     };
 
@@ -262,17 +261,12 @@ export default function UjianPage() {
     window.addEventListener("resize", onResize);
     if (window.visualViewport) {
       window.visualViewport.addEventListener("resize", handleViewportChange);
-      window.visualViewport.addEventListener("scroll", handleViewportChange);
     }
 
     return () => {
       document.removeEventListener("visibilitychange", onVisibilityChange);
       window.removeEventListener("blur", onWindowBlur);
       window.removeEventListener("resize", onResize);
-      if (window.visualViewport) {
-        window.visualViewport.removeEventListener("resize", handleViewportChange);
-        window.visualViewport.removeEventListener("scroll", handleViewportChange);
-      }
     };
   }, [handleSubmit, loading, isSubmitting, attemptLimitReached, role]);
 
@@ -303,6 +297,7 @@ export default function UjianPage() {
           let ordered = examData.questionIds ? examData.questionIds.map((id: string) => qList.find(q => q.id === id)).filter(Boolean) : qList;
           setQuestions(ordered);
           setTimeLeft(examData.durationMinutes * 60);
+          setStartTime(new Date().getTime());
         }
       } catch (err) {
         console.error(err);
@@ -367,7 +362,6 @@ export default function UjianPage() {
     <ProtectedRoute>
       <div className={cn("min-h-screen bg-muted/20 flex flex-col transition-all duration-500", isBlurred && "blur-3xl grayscale pointer-events-none")}>
         
-        {/* ENHANCED DIGITAL WATERMARK MATRIX (Mencegah Foto/Scan Layar) */}
         <div className="watermark-overlay">
           {Array.from({ length: 120 }).map((_, i) => (
             <div key={i} className="watermark-text">
