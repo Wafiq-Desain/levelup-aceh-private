@@ -19,8 +19,8 @@ import {
   TrendingUp,
   UserCheck,
   AlertCircle,
-  Eye,
-  FileBarChart
+  Users,
+  Copy
 } from "lucide-react";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useFirestore } from "@/firebase";
@@ -66,19 +66,16 @@ export default function AdminReportsPage() {
     setStatusMessage(null);
     
     try {
-      // 1. Fetch User Profiles
       const usersSnap = await getDocs(collection(db, "userProfiles"));
       const uMap: Record<string, any> = {};
       usersSnap.forEach(d => { uMap[d.id] = d.data(); });
       setUsersMap(uMap);
 
-      // 2. Fetch Exam titles
       const examsSnap = await getDocs(collection(db, "exams"));
       const eMap: Record<string, any> = {};
       examsSnap.forEach(d => { eMap[d.id] = d.data(); });
       setExamsMap(eMap);
 
-      // 3. Fetch results
       const resultsQuery = query(collectionGroup(db, "results"), orderBy("submissionTime", "desc"));
       const resultsSnap = await getDocs(resultsQuery);
       
@@ -94,7 +91,6 @@ export default function AdminReportsPage() {
       });
       setResults(resultsList);
 
-      // 4. Fetch Answers for pattern analysis
       const answersSnap = await getDocs(collectionGroup(db, "resultAnswers"));
       setAllAnswers(answersSnap.docs.map(d => d.data()));
 
@@ -112,26 +108,38 @@ export default function AdminReportsPage() {
     fetchData();
   }, [fetchData]);
 
-  // ANALYTICS ENGINE: Categorize A, B, C
+  // ANALYTICS ENGINE: Categorize A, B, C with Duplicate Account Detection
   const analyticsData = useMemo(() => {
     if (results.length === 0) return [];
 
     const examResults = selectedExamId === "all" ? results : results.filter(r => r.examId === selectedExamId);
     
+    // Normalization function to find duplicate names (ignore trailing numbers/symbols)
+    const normalizeName = (name: string) => {
+      return (name || "").toLowerCase().trim().replace(/[^a-z0-9]/g, '').replace(/[0-9]+$/, '');
+    };
+
+    // Map to count similar names
+    const normalizedNameGroups: Record<string, string[]> = {};
+    Object.entries(usersMap).forEach(([uid, profile]) => {
+      const norm = normalizeName(profile.displayName);
+      if (!normalizedNameGroups[norm]) normalizedNameGroups[norm] = [];
+      normalizedNameGroups[norm].push(uid);
+    });
+
     return examResults.map(res => {
       let riskScore = 0;
+      let riskReasons: string[] = [];
       const studentAnswers = allAnswers.filter(a => a.resultId === res.id);
-      const otherStudentsAnswers = allAnswers.filter(a => a.resultId !== res.id && a.examId === res.examId);
       
       // Indicator 1: Speed vs Accuracy
-      // (Assumed: High score > 80 and very low violations might be suspicious if finished too fast)
-      // Since we don't have total duration in Result, we check IRT score vs AntiCheat count
-      if (res.totalScore > 90 && res.antiCheatWarningCount === 0) riskScore += 1;
+      if (res.totalScore > 90 && res.antiCheatWarningCount === 0) {
+        riskScore += 1;
+        riskReasons.push("Kecepatan & Akurasi janggal");
+      }
 
       // Indicator 2: Pattern Similarity
-      // We look for shared INCORRECT answers with others (classic cheating sign)
       const myWrongAnswers = studentAnswers.filter(a => !a.isCorrect).map(a => `${a.questionId}_${a.chosenAnswerIndex}`);
-      
       let maxSharedWrongs = 0;
       const resultsByExam = results.filter(r => r.examId === res.examId && r.id !== res.id);
       
@@ -141,8 +149,25 @@ export default function AdminReportsPage() {
         if (shared > maxSharedWrongs) maxSharedWrongs = shared;
       });
 
-      if (maxSharedWrongs >= 3) riskScore += 2; // Strong similarity in errors
-      if (res.antiCheatWarningCount > 0) riskScore += 1;
+      if (maxSharedWrongs >= 3) {
+        riskScore += 2;
+        riskReasons.push("Pola kesalahan identik");
+      }
+      
+      if (res.antiCheatWarningCount > 0) {
+        riskScore += 1;
+        riskReasons.push("Deteksi HP/Layar");
+      }
+
+      // NEW Indicator 3: Duplicate Account Detection
+      const studentProfile = usersMap[res.studentId];
+      const normName = normalizeName(studentProfile?.displayName || "");
+      const isDuplicateName = normalizedNameGroups[normName] && normalizedNameGroups[normName].length > 1;
+      
+      if (isDuplicateName) {
+        riskScore += 3; // Critical risk
+        riskReasons.push("Indikasi Akun Ganda (Nama Mirip)");
+      }
 
       // Final Classification
       let category: 'A' | 'B' | 'C' = 'A';
@@ -153,10 +178,12 @@ export default function AdminReportsPage() {
         ...res,
         category,
         riskScore,
-        sharedWrongs: maxSharedWrongs
+        riskReasons,
+        sharedWrongs: maxSharedWrongs,
+        isDuplicateName
       };
     });
-  }, [results, allAnswers, selectedExamId]);
+  }, [results, allAnswers, selectedExamId, usersMap]);
 
   const handleDeleteResult = (res: any) => {
     if (!confirm(`Hapus nilai secara permanen?`)) return;
@@ -222,7 +249,7 @@ export default function AdminReportsPage() {
             <TabsList className="grid w-full grid-cols-2 max-w-md mx-auto">
               <TabsTrigger value="overview">Daftar Nilai</TabsTrigger>
               <TabsTrigger value="analytics" className="gap-2">
-                <TrendingUp className="h-4 w-4" /> Analisis Detail
+                <TrendingUp className="h-4 w-4" /> Analisis Integritas
               </TabsTrigger>
             </TabsList>
 
@@ -303,8 +330,8 @@ export default function AdminReportsPage() {
               <div className="space-y-6">
                 <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
                   <div>
-                    <h2 className="text-2xl font-black text-primary">ANALISIS INTEGRITAS</h2>
-                    <p className="text-sm text-muted-foreground">Deteksi otomatis pola jawaban & anomali pengerjaan.</p>
+                    <h2 className="text-2xl font-black text-primary">KLASIFIKASI KEJUJURAN</h2>
+                    <p className="text-sm text-muted-foreground">Mendeteksi anomali pola jawaban, pengerjaan cepat, dan akun ganda.</p>
                   </div>
                   <Select value={selectedExamId} onValueChange={setSelectedExamId}>
                     <SelectTrigger className="w-full md:w-64 bg-white">
@@ -340,7 +367,7 @@ export default function AdminReportsPage() {
                         <CardTitle className="text-amber-800 text-sm">KATEGORI B</CardTitle>
                         <AlertCircle className="h-5 w-5 text-amber-600" />
                       </div>
-                      <CardDescription className="text-amber-600 text-xs">Abu-abu / Indikasi</CardDescription>
+                      <CardDescription className="text-amber-600 text-xs">Indikasi Ikut Arus</CardDescription>
                     </CardHeader>
                     <CardContent>
                       <p className="text-3xl font-black text-amber-800">
@@ -371,7 +398,7 @@ export default function AdminReportsPage() {
                         <TableRow>
                           <TableHead>SISWA</TableHead>
                           <TableHead className="text-center">KLASIFIKASI</TableHead>
-                          <TableHead>INDIKATOR TEMUAN</TableHead>
+                          <TableHead>TEMUAN RISIKO</TableHead>
                           <TableHead className="text-center">KEMIRIPAN SALAH</TableHead>
                           <TableHead className="text-center">SKOR</TableHead>
                         </TableRow>
@@ -400,10 +427,20 @@ export default function AdminReportsPage() {
                             </TableCell>
                             <TableCell className="text-xs">
                               <div className="space-y-1">
-                                {res.category === 'A' && <span className="text-green-700 flex items-center gap-1"><UserCheck className="h-3 w-3" /> Pola pengerjaan natural</span>}
-                                {res.category === 'B' && <span className="text-amber-700 flex items-center gap-1"><Info className="h-3 w-3" /> Ada indikasi bantuan luar</span>}
-                                {res.category === 'C' && <span className="text-red-700 flex items-center gap-1 font-bold"><AlertTriangle className="h-3 w-3" /> Pola jawaban identik kelompok</span>}
-                                {res.antiCheatWarningCount > 0 && <span className="text-destructive flex items-center gap-1"><ShieldAlert className="h-3 w-3" /> Terdeteksi pindah tab/split screen</span>}
+                                {res.riskReasons.map((reason: string, idx: number) => (
+                                  <div key={idx} className={cn(
+                                    "flex items-center gap-1 font-medium",
+                                    res.category === 'C' ? "text-red-700" : "text-amber-700"
+                                  )}>
+                                    {reason === "Indikasi Akun Ganda (Nama Mirip)" ? <Copy className="h-3 w-3" /> : <AlertTriangle className="h-3 w-3" />}
+                                    {reason}
+                                  </div>
+                                ))}
+                                {res.riskReasons.length === 0 && (
+                                  <div className="text-green-700 flex items-center gap-1">
+                                    <UserCheck className="h-3 w-3" /> Pola pengerjaan natural
+                                  </div>
+                                )}
                               </div>
                             </TableCell>
                             <TableCell className="text-center">
@@ -431,3 +468,4 @@ export default function AdminReportsPage() {
     </ProtectedRoute>
   );
 }
+
