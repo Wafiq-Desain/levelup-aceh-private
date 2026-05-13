@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from "react";
@@ -56,7 +57,7 @@ export default function UjianPage() {
   const hasSubmitted = useRef(false);
   const wakeLockRef = useRef<any>(null);
 
-  // 1. WAKE LOCK: Mencegah HP mati/terkunci (mencegah blur event)
+  // 1. WAKE LOCK & ZOOM BLOCKER
   const requestWakeLock = async () => {
     try {
       if ('wakeLock' in navigator) {
@@ -74,28 +75,39 @@ export default function UjianPage() {
         requestWakeLock();
       }
     };
+
+    // Block Zooming gestures for modern mobile browsers
+    const preventZoom = (e: any) => {
+      if (e.touches && e.touches.length > 1) {
+        e.preventDefault();
+      }
+    };
+    
     document.addEventListener('visibilitychange', handleVisibility);
+    document.addEventListener('touchstart', preventZoom, { passive: false });
+    document.addEventListener('gesturestart', (e) => e.preventDefault());
+
     return () => {
       document.removeEventListener('visibilitychange', handleVisibility);
+      document.removeEventListener('touchstart', preventZoom);
       if (wakeLockRef.current) wakeLockRef.current.release();
     };
   }, []);
 
-  // 2. INPUT PROTECTION: Blokir Klik Kanan, Seleksi, Copy-Paste, Drag, Print
+  // 2. INPUT PROTECTION: Blokir Klik Kanan, Seleksi, Copy-Paste, Drag, Print, Zoom
   useEffect(() => {
     const preventDefault = (e: Event) => e.preventDefault();
     
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Blokir F12, Ctrl+C, Ctrl+V, Ctrl+U, Ctrl+S, Ctrl+P, dsb.
       const forbiddenKeys = ['F12', 'F11'];
-      const ctrlKeys = ['c', 'v', 'u', 'i', 'p', 's', 'j'];
+      const ctrlKeys = ['c', 'v', 'u', 'i', 'p', 's', 'j', '+', '-', '0'];
       
       if (forbiddenKeys.includes(e.key) || (e.ctrlKey && ctrlKeys.includes(e.key.toLowerCase())) || (e.metaKey && ctrlKeys.includes(e.key.toLowerCase()))) {
         e.preventDefault();
         toast({
           variant: "destructive",
           title: "PINTASAN DIBLOKIR",
-          description: "Dilarang menggunakan pintasan keyboard selama ujian.",
+          description: "Dilarang memanipulasi tampilan atau menyalin konten.",
         });
         return false;
       }
@@ -108,14 +120,21 @@ export default function UjianPage() {
       }
     };
 
+    // Block Mouse Wheel Zoom
+    const handleWheel = (e: WheelEvent) => {
+      if (e.ctrlKey) {
+        e.preventDefault();
+      }
+    };
+
     document.addEventListener("contextmenu", preventDefault);
     document.addEventListener("selectstart", preventDefault);
     document.addEventListener("dragstart", preventDefault);
     document.addEventListener("keydown", handleKeyDown);
+    document.addEventListener("wheel", handleWheel, { passive: false });
     window.addEventListener("beforeunload", handleBeforeUnload);
     document.body.classList.add("no-select");
 
-    // Browser Back Button Lock (History Manipulation)
     window.history.pushState(null, "", window.location.href);
     const handlePopState = () => {
       window.history.pushState(null, "", window.location.href);
@@ -132,13 +151,14 @@ export default function UjianPage() {
       document.removeEventListener("selectstart", preventDefault);
       document.removeEventListener("dragstart", preventDefault);
       document.removeEventListener("keydown", handleKeyDown);
+      document.removeEventListener("wheel", handleWheel);
       window.removeEventListener("beforeunload", handleBeforeUnload);
       window.removeEventListener("popstate", handlePopState);
       document.body.classList.remove("no-select");
     };
   }, [toast]);
 
-  // 3. SUBMIT LOGIC (Normal & Auto)
+  // 3. SUBMIT LOGIC
   const handleSubmit = useCallback(async (isAuto = false, reason = "") => {
     if (!user || !examId || hasSubmitted.current) return;
     hasSubmitted.current = true;
@@ -205,7 +225,7 @@ export default function UjianPage() {
     }
   }, [user, examId, questions, answers, db, router, toast]);
 
-  // 4. HP/MOBILE PROTECTION: Deteksi Layar Terbagi, Pindah Aplikasi, Notifikasi
+  // 4. HP/MOBILE PROTECTION: Deteksi Layar Terbagi, Ganti Aplikasi, Zooming
   useEffect(() => {
     if (loading || isSubmitting || attemptLimitReached || role === 'admin') return;
     
@@ -216,31 +236,28 @@ export default function UjianPage() {
       }
     };
 
-    const onVisibilityChange = () => { if (document.hidden) handleViolation("Pindah Tab/Aplikasi"); };
+    const onVisibilityChange = () => { if (document.hidden) handleViolation("Keluar Tab/Ganti Aplikasi"); };
+    const onWindowBlur = () => { if (!hasSubmitted.current) handleViolation("Layar Kehilangan Fokus (Notifikasi/Sistem)"); };
     
-    // On mobile, touching notification or swiping control center triggers blur
-    const onWindowBlur = () => { 
-      if (!hasSubmitted.current) {
-        handleViolation("Aplikasi Kehilangan Fokus (Notifikasi/Split Screen)");
-      }
-    };
-    
-    // On mobile, split screen changes height significantly
     const onResize = () => {
-      const ratio = window.innerHeight / window.screen.availHeight;
-      if (ratio < 0.70) { // HP Split Screen biasanya memakan setidaknya 30% layar
-        handleViolation("Mode Layar Terbagi (Split Screen) Terdeteksi");
+      // Detection for Split Screen and Zoom Manipulation
+      const screenHeight = window.screen.availHeight;
+      const currentHeight = window.innerHeight;
+      const ratio = currentHeight / screenHeight;
+
+      if (ratio < 0.65) {
+        handleViolation("Upaya Layar Terbagi (Split Screen)");
+      }
+      
+      // Detection for Browser Zoom (Visual Viewport)
+      if (window.visualViewport && window.visualViewport.scale !== 1) {
+        handleViolation("Upaya Perubahan Skala (Zooming) Terdeteksi");
       }
     };
 
     document.addEventListener("visibilitychange", onVisibilityChange);
     window.addEventListener("blur", onWindowBlur);
     window.addEventListener("resize", onResize);
-
-    // Initial check for split screen
-    if (window.innerHeight < window.screen.availHeight * 0.70) {
-      handleViolation("Ujian dilarang dibuka dalam mode Split Screen");
-    }
 
     return () => {
       document.removeEventListener("visibilitychange", onVisibilityChange);
@@ -249,13 +266,12 @@ export default function UjianPage() {
     };
   }, [handleSubmit, loading, isSubmitting, attemptLimitReached, role]);
 
-  // 5. FETCH DATA & ATTEMPT LIMIT
+  // 5. FETCH DATA
   useEffect(() => {
     const fetchData = async () => {
       if (!examId || !user || !role) return;
       try {
         setLoading(true);
-        
         const resultsRef = collection(db, "users", user.uid, "results");
         const resultsQuery = query(resultsRef, where("examId", "==", examId));
         const resultsSnap = await getDocs(resultsQuery);
@@ -341,11 +357,15 @@ export default function UjianPage() {
     <ProtectedRoute>
       <div className={cn("min-h-screen bg-muted/20 flex flex-col transition-all duration-500", isBlurred && "blur-3xl grayscale pointer-events-none")}>
         
-        {/* WATERMARK DIGITAL (Mencegah Foto HP lain) */}
-        <div className="watermark-overlay">
-          {Array.from({ length: 25 }).map((_, i) => (
-            <div key={i} className="watermark-text">
-              {user?.email} • {user?.uid.slice(0, 6)}
+        {/* ENHANCED DIGITAL WATERMARK MATRIX (Mencegah Foto/Scan Layar) */}
+        <div className="watermark-overlay overflow-hidden select-none pointer-events-none fixed inset-0 z-[100] opacity-10 flex flex-wrap justify-center content-center gap-20 md:gap-32">
+          {Array.from({ length: 48 }).map((_, i) => (
+            <div 
+              key={i} 
+              className="text-[10px] md:text-xs font-black text-black whitespace-nowrap uppercase tracking-widest"
+              style={{ transform: `rotate(${-25 + (i % 5)}deg)` }}
+            >
+              {user?.email} • {user?.uid.slice(0, 8)}
             </div>
           ))}
         </div>
@@ -353,10 +373,10 @@ export default function UjianPage() {
         <header className="sticky top-0 z-50 bg-white border-b shadow-sm h-14 md:h-16 flex items-center">
           <div className="container mx-auto px-4 flex items-center justify-between">
             <div className="flex flex-col min-w-0">
-              <h2 className="text-sm font-bold text-primary truncate max-w-[140px] md:max-w-md uppercase">{exam?.title}</h2>
+              <h2 className="text-xs md:text-sm font-black text-primary truncate max-w-[140px] md:max-w-md uppercase tracking-tight">{exam?.title}</h2>
               <div className="flex items-center gap-1">
                 <ShieldAlert className="h-2.5 w-2.5 text-destructive animate-pulse" />
-                <span className="text-[7px] font-black text-destructive uppercase tracking-tighter">Super Strict HP Mode Active</span>
+                <span className="text-[7px] font-black text-destructive uppercase tracking-tighter">Super Strict Security Active</span>
               </div>
             </div>
             
@@ -368,7 +388,7 @@ export default function UjianPage() {
                 <Clock className="h-4 w-4 md:h-5 md:w-5" />
                 {Math.floor(timeLeft / 60)}:{String(timeLeft % 60).padStart(2, '0')}
               </div>
-              <Button size="sm" variant="destructive" onClick={() => handleSubmit()} className="h-9 px-4 text-xs font-black bg-primary border-b-4 border-black/20" disabled={isSubmitting}>
+              <Button size="sm" variant="destructive" onClick={() => handleSubmit()} className="h-9 px-4 text-xs font-black bg-primary" disabled={isSubmitting}>
                 {isSubmitting ? "..." : "SELESAI"}
               </Button>
             </div>
@@ -379,44 +399,36 @@ export default function UjianPage() {
 
         <main className="flex-1 container mx-auto px-2 py-4 md:px-4 md:py-8 flex flex-col lg:flex-row gap-6">
           <aside className="w-full lg:w-1/4 order-2 lg:order-1">
-            <Card className="shadow-md border-none bg-white overflow-hidden">
+            <Card className="shadow-md border-none bg-white">
               <CardHeader className="py-3 px-4 bg-primary/5 border-b">
                 <CardTitle className="text-[10px] font-black uppercase tracking-widest flex items-center gap-2 text-primary">
                   <BookOpen className="h-3 w-3" /> Navigasi Nomor
                 </CardTitle>
               </CardHeader>
-              <CardContent className="p-3 md:p-4">
-                <div className="grid grid-cols-5 md:grid-cols-4 lg:grid-cols-5 gap-2">
+              <CardContent className="p-3">
+                <div className="grid grid-cols-5 gap-2">
                   {questions.map((q, i) => (
                     <button 
                       key={`nav-${i}`} 
                       onClick={() => setCurrentIndex(i)} 
                       className={cn(
-                        "h-10 rounded-lg text-xs font-black transition-all border-2 flex items-center justify-center relative",
-                        currentIndex === i ? "bg-secondary text-black border-primary shadow-[0_4px_0_0_rgba(0,0,0,0.1)]" 
+                        "h-10 rounded-lg text-xs font-black transition-all border-2 flex items-center justify-center",
+                        currentIndex === i ? "bg-secondary text-black border-primary" 
                         : answers[q?.id]?.choice ? "bg-green-50 text-green-700 border-green-200" 
-                        : "bg-white text-muted-foreground border-muted hover:border-primary/30"
+                        : "bg-white text-muted-foreground border-muted"
                       )}
                     >
                       {i + 1}
-                      {answers[q?.id]?.isFlagged && <div className="absolute -top-1 -right-1 bg-amber-500 h-2.5 w-2.5 rounded-full ring-2 ring-white"></div>}
                     </button>
                   ))}
                 </div>
               </CardContent>
             </Card>
-            
-            <div className="mt-4 p-4 bg-amber-50 rounded-xl border-2 border-amber-200 text-[10px] md:text-xs text-amber-800 font-medium">
-              <div className="flex items-center gap-2 mb-2 font-bold uppercase">
-                <AlertTriangle className="h-4 w-4" /> Peringatan HP
-              </div>
-              <p>Dilarang keluar aplikasi, split screen, atau menyentuh notifikasi. Sistem akan mengunci ujian secara otomatis jika terdeteksi.</p>
-            </div>
           </aside>
 
-          <section className="flex-1 flex flex-col gap-4 order-1 lg:order-2">
-            <Card className="border-none shadow-xl overflow-hidden flex-1 bg-white relative">
-              <CardHeader className="p-5 md:p-8 border-b bg-white">
+          <section className="flex-1 flex flex-col gap-4 order-1 lg:order-2 touch-none">
+            <Card className="border-none shadow-xl flex-1 bg-white relative">
+              <CardHeader className="p-5 md:p-8 border-b">
                 <div className="flex items-center justify-between mb-4">
                   <Badge className="bg-primary text-[10px] font-black px-4 py-1">SOAL {currentIndex + 1}</Badge>
                   <Button 
@@ -427,23 +439,22 @@ export default function UjianPage() {
                       const qId = currentQ?.id;
                       if (qId) setAnswers(prev => ({ ...prev, [qId]: { ...prev[qId], isFlagged: !prev[qId]?.isFlagged } }));
                     }}
-                    className={cn("h-8 text-[10px] font-bold gap-2 rounded-full", answers[currentQ?.id]?.isFlagged ? "bg-amber-100 text-amber-700 border-2 border-amber-300" : "bg-muted text-muted-foreground")}
+                    className={cn("h-8 text-[10px] font-bold gap-2", answers[currentQ?.id]?.isFlagged ? "bg-amber-100 text-amber-700" : "bg-muted text-muted-foreground")}
                   >
-                    <Flag className={cn("h-3 w-3", answers[currentQ?.id]?.isFlagged && "fill-current")} />
-                    RAGU-RAGU
+                    <Flag className="h-3 w-3" /> RAGU-RAGU
                   </Button>
                 </div>
                 {currentQ?.imageUrl && (
-                  <div className="mb-6 rounded-2xl bg-muted/30 p-3 flex justify-center border-2 border-dashed border-muted-foreground/20">
-                    <img src={currentQ.imageUrl} alt="Visual Soal" className="max-h-48 md:max-h-72 object-contain rounded-lg" />
+                  <div className="mb-6 rounded-2xl bg-muted/30 p-3 flex justify-center border-2 border-dashed">
+                    <img src={currentQ.imageUrl} alt="Visual Soal" className="max-h-48 md:max-h-72 object-contain rounded-lg pointer-events-none" />
                   </div>
                 )}
-                <div className="text-base md:text-xl font-medium leading-relaxed w-full">
-                  <LatexRenderer content={currentQ?.questionText || "Memuat pertanyaan..."} />
+                <div className="text-base md:text-xl font-medium leading-relaxed">
+                  <LatexRenderer content={currentQ?.questionText || "..."} />
                 </div>
               </CardHeader>
 
-              <CardContent className="p-4 md:p-8 bg-muted/5">
+              <CardContent className="p-4 md:p-8">
                 <RadioGroup 
                   value={answers[currentQ?.id]?.choice || ""} 
                   onValueChange={handleSelectAnswer} 
@@ -457,13 +468,13 @@ export default function UjianPage() {
                         key={`opt-${i}`} 
                         onClick={() => handleSelectAnswer(label)}
                         className={cn(
-                          "flex items-center gap-4 p-4 md:p-5 rounded-2xl border-2 transition-all cursor-pointer bg-white group shadow-sm",
-                          isSelected ? "border-primary bg-primary/5 ring-4 ring-primary/10" : "border-border hover:border-primary/20"
+                          "flex items-center gap-4 p-4 md:p-5 rounded-2xl border-2 cursor-pointer bg-white transition-all",
+                          isSelected ? "border-primary bg-primary/5 shadow-md" : "border-border hover:border-primary/20"
                         )}
                       >
                         <div className={cn(
-                          "w-10 h-10 rounded-xl flex items-center justify-center text-sm font-black border-2 transition-colors shrink-0",
-                          isSelected ? "bg-primary text-white border-primary" : "bg-muted text-muted-foreground group-hover:border-primary/30"
+                          "w-10 h-10 rounded-xl flex items-center justify-center text-sm font-black border-2",
+                          isSelected ? "bg-primary text-white border-primary" : "bg-muted text-muted-foreground"
                         )}>
                           {label}
                         </div>
@@ -481,16 +492,16 @@ export default function UjianPage() {
                   variant="outline" 
                   onClick={() => setCurrentIndex(p => Math.max(0, p - 1))} 
                   disabled={currentIndex === 0}
-                  className="font-bold text-xs h-11 px-6 border-2"
+                  className="font-bold text-xs h-11"
                 >
                   <ChevronLeft className="h-4 w-4 mr-1" /> KEMBALI
                 </Button>
                 {currentIndex < questions.length - 1 ? (
-                  <Button onClick={() => setCurrentIndex(p => p + 1)} className="bg-primary hover:bg-primary/90 font-bold px-8 h-11 text-xs text-white shadow-lg shadow-primary/20">
+                  <Button onClick={() => setCurrentIndex(p => p + 1)} className="bg-primary font-bold px-8 h-11">
                     BERIKUTNYA <ChevronRight className="h-4 w-4 ml-1" />
                   </Button>
                 ) : (
-                  <Button onClick={() => handleSubmit()} className="bg-green-600 hover:bg-green-700 font-black px-8 h-11 text-xs text-white shadow-lg shadow-green-600/20">
+                  <Button onClick={() => handleSubmit()} className="bg-green-600 font-black px-8 h-11 text-white shadow-lg">
                     SELESAI & KIRIM <CheckCircle2 className="h-4 w-4 ml-1" />
                   </Button>
                 )}
