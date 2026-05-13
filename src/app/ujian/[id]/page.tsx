@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from "react";
@@ -30,7 +29,8 @@ import {
   CheckCircle2, 
   Flag,
   BookOpen,
-  AlertTriangle
+  AlertTriangle,
+  Lock
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
@@ -55,6 +55,7 @@ export default function UjianPage() {
   const hasSubmitted = useRef(false);
   const wakeLockRef = useRef<any>(null);
 
+  // 1. WAKE LOCK: Mencegah layar mati
   const requestWakeLock = async () => {
     try {
       if ('wakeLock' in navigator) {
@@ -79,36 +80,66 @@ export default function UjianPage() {
     };
   }, []);
 
+  // 2. INPUT PROTECTION: Blokir Klik Kanan, Seleksi, Copy-Paste, Drag
   useEffect(() => {
     const preventDefault = (e: Event) => e.preventDefault();
+    
+    // Keyboard Shortcuts Blocker
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Blokir F12, Ctrl+Shift+I (Inspect), Ctrl+U (Source), Ctrl+P (Print), Ctrl+S (Save), Ctrl+C (Copy), Ctrl+V (Paste)
+      const forbiddenKeys = ['F12', 'F11'];
+      const ctrlKeys = ['c', 'v', 'u', 'i', 'p', 's', 'j'];
+      
+      if (forbiddenKeys.includes(e.key) || (e.ctrlKey && ctrlKeys.includes(e.key.toLowerCase())) || (e.metaKey && ctrlKeys.includes(e.key.toLowerCase()))) {
+        e.preventDefault();
+        toast({
+          variant: "destructive",
+          title: "PINTASAN DIBLOKIR",
+          description: "Dilarang menggunakan tombol pintas keyboard selama ujian.",
+        });
+        return false;
+      }
+    };
+
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       if (!hasSubmitted.current) {
         e.preventDefault();
-        e.returnValue = "Ujian sedang berlangsung!";
+        e.returnValue = "Ujian sedang berlangsung! Keluar sekarang akan menganggap ujian selesai.";
       }
     };
 
     document.addEventListener("contextmenu", preventDefault);
     document.addEventListener("selectstart", preventDefault);
+    document.addEventListener("dragstart", preventDefault);
+    document.addEventListener("keydown", handleKeyDown);
     window.addEventListener("beforeunload", handleBeforeUnload);
     document.body.classList.add("no-select");
 
+    // Browser Back Button Lock
     window.history.pushState(null, "", window.location.href);
     const handlePopState = () => {
       window.history.pushState(null, "", window.location.href);
+      toast({
+        variant: "destructive",
+        title: "TOMBOL BACK DIBLOKIR",
+        description: "Gunakan navigasi nomor soal di layar.",
+      });
     };
     window.addEventListener("popstate", handlePopState);
 
     return () => {
       document.removeEventListener("contextmenu", preventDefault);
       document.removeEventListener("selectstart", preventDefault);
+      document.removeEventListener("dragstart", preventDefault);
+      document.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("beforeunload", handleBeforeUnload);
       window.removeEventListener("popstate", handlePopState);
       document.body.classList.remove("no-select");
     };
-  }, []);
+  }, [toast]);
 
-  const handleSubmit = useCallback(async (isAuto = false) => {
+  // 3. SUBMIT LOGIC
+  const handleSubmit = useCallback(async (isAuto = false, reason = "") => {
     if (!user || !examId || hasSubmitted.current) return;
     hasSubmitted.current = true;
     setIsSubmitting(true);
@@ -151,6 +182,7 @@ export default function UjianPage() {
         unansweredCount: questions.length - answeredCount,
         antiCheatWarningCount: isAuto ? 1 : 0,
         isAutoSubmitted: isAuto,
+        autoSubmitReason: reason,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       };
@@ -158,8 +190,8 @@ export default function UjianPage() {
       setDocumentNonBlocking(resultRef, resultData, { merge: true });
 
       toast({ 
-        title: isAuto ? "PELANGGARAN DETEKSI!" : "Berhasil Dikirim", 
-        description: isAuto ? "Sesi dihentikan karena pindah tab, aplikasi, atau layar terbagi." : "Jawaban Anda telah aman tersimpan.",
+        title: isAuto ? "PELANGGARAN TERDETEKSI!" : "Berhasil Dikirim", 
+        description: isAuto ? `Ujian dihentikan paksa: ${reason}` : "Jawaban Anda telah aman tersimpan.",
         variant: isAuto ? "destructive" : "default"
       });
       
@@ -173,24 +205,24 @@ export default function UjianPage() {
     }
   }, [user, examId, questions, answers, db, router, toast]);
 
-  // Anti-Cheat Monitoring (Visibility, Blur, and Resize/Split-Screen)
+  // 4. ENVIRONMENT MONITORING (Tab Switch, App Switch, Split Screen)
   useEffect(() => {
     if (loading || isSubmitting || attemptLimitReached || role === 'admin') return;
     
-    const handleViolation = () => {
+    const handleViolation = (reason: string) => {
       if (!hasSubmitted.current) {
         setIsBlurred(true);
-        handleSubmit(true);
+        handleSubmit(true, reason);
       }
     };
 
-    const onVisibilityChange = () => { if (document.hidden) handleViolation(); };
-    const onWindowBlur = () => { handleViolation(); };
+    const onVisibilityChange = () => { if (document.hidden) handleViolation("Pindah Tab/Aplikasi"); };
+    const onWindowBlur = () => { handleViolation("Fokus Layar Hilang (Kemungkinan Split Screen/Notifikasi)"); };
     const onResize = () => {
-      // Logic: Detect if window height is unusually small compared to screen,
-      // or if dimensions change during the test (activation of split screen)
-      if (window.innerHeight < window.screen.availHeight * 0.7) {
-        handleViolation();
+      // Deteksi perubahan rasio layar yang signifikan (Split Screen)
+      const ratio = window.innerHeight / window.screen.availHeight;
+      if (ratio < 0.75) {
+        handleViolation("Layar Terbagi (Split Screen) Terdeteksi");
       }
     };
 
@@ -198,14 +230,9 @@ export default function UjianPage() {
     window.addEventListener("blur", onWindowBlur);
     window.addEventListener("resize", onResize);
 
-    // Initial check for split-screen already active
-    if (window.innerHeight < window.screen.availHeight * 0.7) {
-      toast({
-        variant: "destructive",
-        title: "PERINGATAN LAYAR TERBAGI",
-        description: "Ujian tidak dapat dimulai dalam mode layar terbagi (Split Screen).",
-      });
-      handleViolation();
+    // Initial Split Screen Check
+    if (window.innerHeight < window.screen.availHeight * 0.75) {
+      handleViolation("Ujian dibuka dalam mode Layar Terbagi");
     }
 
     return () => {
@@ -213,42 +240,23 @@ export default function UjianPage() {
       window.removeEventListener("blur", onWindowBlur);
       window.removeEventListener("resize", onResize);
     };
-  }, [handleSubmit, loading, isSubmitting, attemptLimitReached, role, toast]);
+  }, [handleSubmit, loading, isSubmitting, attemptLimitReached, role]);
 
+  // 5. FETCH DATA
   useEffect(() => {
     const fetchData = async () => {
       if (!examId || !user || !role) return;
       try {
         setLoading(true);
-
-        const profileSnap = await getDoc(doc(db, "userProfiles", user.uid));
-        const profile = profileSnap.data();
         
-        if (role === 'student') {
-          if (!profileSnap.exists()) {
-            router.replace('/complete-profile');
-            return;
-          }
-
-          const nameComplete = !!(profile?.displayName || "").trim();
-          const schoolComplete = !!(profile?.schoolName || "").trim();
-          const isMan2 = (profile?.schoolName || "").trim().toLowerCase().includes("man 2");
-          const initialComplete = isMan2 ? !!(profile?.initialClass || "").trim() : true;
-
-          if (!nameComplete || !schoolComplete || !initialComplete) {
-              router.replace('/complete-profile');
-              return;
-          }
-
-          const resultsRef = collection(db, "users", user.uid, "results");
-          const resultsQuery = query(resultsRef, where("examId", "==", examId));
-          const resultsSnap = await getDocs(resultsQuery);
-          
-          if (resultsSnap.size >= 2) {
-            setAttemptLimitReached(true);
-            setLoading(false);
-            return;
-          }
+        const resultsRef = collection(db, "users", user.uid, "results");
+        const resultsQuery = query(resultsRef, where("examId", "==", examId));
+        const resultsSnap = await getDocs(resultsQuery);
+        
+        if (role === 'student' && resultsSnap.size >= 2) {
+          setAttemptLimitReached(true);
+          setLoading(false);
+          return;
         }
 
         const examDoc = await getDoc(doc(db, "exams", examId as string));
@@ -270,15 +278,16 @@ export default function UjianPage() {
       }
     };
     fetchData();
-  }, [examId, user, role, db, router]);
+  }, [examId, user, role, db]);
 
+  // 6. TIMER
   useEffect(() => {
     if (loading || isSubmitting || attemptLimitReached) return;
     const interval = setInterval(() => {
       setTimeLeft(prev => {
         if (prev <= 1) {
           clearInterval(interval);
-          if (role !== 'admin') handleSubmit();
+          if (role !== 'admin') handleSubmit(true, "Waktu Habis");
           return 0;
         }
         return prev - 1;
@@ -311,9 +320,9 @@ export default function UjianPage() {
       <div className="flex h-screen items-center justify-center p-6 text-center">
         <Card className="max-w-sm w-full p-6 border-t-8 border-destructive shadow-2xl">
           <AlertTriangle className="h-16 w-16 text-destructive mx-auto mb-4" />
-          <h2 className="text-xl font-bold mb-2">Akses Terkunci</h2>
-          <p className="text-muted-foreground mb-6">Anda sudah mengerjakan ujian ini sebanyak 2 kali. Tidak ada kuota tambahan tersedia.</p>
-          <Button className="w-full" onClick={() => router.replace('/dashboard')}>Kembali ke Beranda</Button>
+          <h2 className="text-xl font-bold mb-2">Batas Percobaan Habis</h2>
+          <p className="text-muted-foreground mb-6">Anda sudah mengerjakan ujian ini sebanyak 2 kali.</p>
+          <Button className="w-full" onClick={() => router.replace('/dashboard')}>Kembali</Button>
         </Card>
       </div>
     );
@@ -324,13 +333,22 @@ export default function UjianPage() {
   return (
     <ProtectedRoute>
       <div className={cn("min-h-screen bg-muted/20 flex flex-col transition-all duration-500", isBlurred && "blur-3xl grayscale pointer-events-none")}>
+        
+        {/* WATERMARK OVERLAY */}
+        <div className="watermark-overlay">
+          {Array.from({ length: 20 }).map((_, i) => (
+            <div key={i} className="watermark-text">{user?.email} • {user?.uid.slice(0, 5)}</div>
+          ))}
+        </div>
+
         <header className="sticky top-0 z-50 bg-white border-b shadow-sm h-14 md:h-16 flex items-center">
           <div className="container mx-auto px-4 flex items-center justify-between">
             <div className="flex flex-col min-w-0">
               <h2 className="text-sm md:text-base font-bold text-primary truncate max-w-[150px] md:max-w-md">{exam?.title}</h2>
-              <span className="text-[9px] font-black text-destructive uppercase tracking-tighter">
-                {role === 'admin' ? "Admin Preview Mode" : "Strict Mode Active"}
-              </span>
+              <div className="flex items-center gap-1">
+                <Lock className="h-2 w-2 text-destructive" />
+                <span className="text-[8px] font-black text-destructive uppercase tracking-tighter">Super Strict Mode Active</span>
+              </div>
             </div>
             
             <div className="flex items-center gap-3 md:gap-6">
@@ -341,8 +359,8 @@ export default function UjianPage() {
                 <Clock className="h-4 w-4 md:h-5 md:w-5" />
                 {Math.floor(timeLeft / 60)}:{String(timeLeft % 60).padStart(2, '0')}
               </div>
-              <Button size="sm" variant="destructive" onClick={() => role === 'admin' ? router.push('/dashboard') : handleSubmit()} className="h-8 md:h-10 text-xs md:text-sm font-bold bg-primary">
-                {role === 'admin' ? "KELUAR PREVIEW" : "SELESAI"}
+              <Button size="sm" variant="destructive" onClick={() => handleSubmit()} className="h-8 md:h-10 text-xs md:text-sm font-bold bg-primary" disabled={isSubmitting}>
+                {isSubmitting ? "..." : "SELESAI"}
               </Button>
             </div>
           </div>
@@ -359,7 +377,7 @@ export default function UjianPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-3 md:p-4">
-                <div className="grid grid-cols-5 md:grid-cols-5 gap-2">
+                <div className="grid grid-cols-5 gap-2">
                   {questions.map((q, i) => (
                     <button 
                       key={`nav-${i}`} 
@@ -367,12 +385,12 @@ export default function UjianPage() {
                       className={cn(
                         "h-9 md:h-10 rounded text-xs font-bold transition-all border flex items-center justify-center relative",
                         currentIndex === i ? "bg-secondary text-black border-secondary ring-2 ring-secondary/20" 
-                        : answers[q?.id]?.choice ? "bg-primary/5 text-primary border-primary/20" 
+                        : answers[q?.id]?.choice ? "bg-primary/10 text-primary border-primary/30" 
                         : "bg-white text-muted-foreground border-muted"
                       )}
                     >
                       {i + 1}
-                      {answers[q?.id]?.isFlagged && <div className="absolute -top-1 -right-1 bg-amber-500 h-2 w-2 rounded-full ring-2 ring-white"></div>}
+                      {answers[q?.id]?.isFlagged && <div className="absolute -top-1 -right-1 bg-amber-500 h-2 w-2 rounded-full ring-1 ring-white"></div>}
                     </button>
                   ))}
                 </div>
@@ -381,10 +399,10 @@ export default function UjianPage() {
           </aside>
 
           <section className="flex-1 flex flex-col gap-4">
-            <Card className="border-none shadow-lg overflow-hidden flex-1 bg-white">
+            <Card className="border-none shadow-lg overflow-hidden flex-1 bg-white relative">
               <CardHeader className="p-5 md:p-8 border-b">
                 <div className="flex items-center justify-between mb-4">
-                  <span className="text-[10px] font-black text-primary px-3 py-1 bg-primary/5 rounded-full">SOAL {currentIndex + 1}</span>
+                  <span className="text-[10px] font-black text-primary px-3 py-1 bg-primary/5 rounded-full">NO. {currentIndex + 1}</span>
                   <Button 
                     variant="ghost" 
                     size="sm" 
@@ -456,8 +474,8 @@ export default function UjianPage() {
                     LANJUT <ChevronRight className="h-4 w-4 ml-1" />
                   </Button>
                 ) : (
-                  <Button onClick={() => role === 'admin' ? router.push('/dashboard') : handleSubmit()} className="bg-green-600 hover:bg-green-700 font-bold px-6 h-10 text-xs text-white">
-                    {role === 'admin' ? "SELESAI PREVIEW" : "KIRIM"} <CheckCircle2 className="h-4 w-4 ml-1" />
+                  <Button onClick={() => handleSubmit()} className="bg-green-600 hover:bg-green-700 font-bold px-6 h-10 text-xs text-white">
+                    KIRIM <CheckCircle2 className="h-4 w-4 ml-1" />
                   </Button>
                 )}
               </CardFooter>
