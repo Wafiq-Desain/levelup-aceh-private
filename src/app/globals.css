@@ -1,3 +1,4 @@
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -46,7 +47,7 @@
   user-select: none !important;
 }
 
-/* Hilangkan elemen saat Print atau Screenshot via Browser Print */
+/* Hilangkan elemen saat Print */
 @media print {
   body {
     display: none !important;
@@ -57,34 +58,42 @@
   }
 }
 
-/* Watermark Overlay Style */
+/* Watermark Overlay Matrix Style */
 .watermark-overlay {
   position: fixed;
   top: 0;
   left: 0;
-  width: 100%;
-  height: 100%;
+  width: 100vw;
+  height: 100vh;
   pointer-events: none;
   z-index: 9999;
   display: flex;
   flex-wrap: wrap;
   justify-content: space-around;
   align-content: space-around;
-  opacity: 0.05; /* Sangat samar agar tidak mengganggu bacaan */
+  opacity: 0.08;
   overflow: hidden;
+  user-select: none;
 }
 
 .watermark-text {
   transform: rotate(-30deg);
-  font-size: 12px;
-  font-weight: 800;
+  font-size: 10px;
+  font-weight: 900;
   color: #000;
   white-space: nowrap;
-  padding: 50px;
+  padding: 40px;
   text-transform: uppercase;
+  letter-spacing: 1px;
 }
 
-/* Disable Blue Highlight on Mobile */
+/* Disable Blue Highlight on Mobile & Touch Improvements */
 * {
   -webkit-tap-highlight-color: transparent;
+  touch-action: pan-y pinch-zoom; /* Default pan-y for scrolling, but pinch-zoom is blocked via JS for granularity */
+}
+
+/* Strict Touch Protection for Exam Content */
+.exam-content-area {
+  touch-action: pan-y; /* Prevents double-tap zoom and pinch zoom gestures */
 }

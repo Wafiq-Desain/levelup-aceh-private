@@ -76,20 +76,20 @@ export default function UjianPage() {
       }
     };
 
-    // Block Zooming gestures for modern mobile browsers
-    const preventZoom = (e: any) => {
+    // Block Pinch-to-Zoom gestures
+    const preventPinchZoom = (e: any) => {
       if (e.touches && e.touches.length > 1) {
         e.preventDefault();
       }
     };
     
     document.addEventListener('visibilitychange', handleVisibility);
-    document.addEventListener('touchstart', preventZoom, { passive: false });
+    document.addEventListener('touchstart', preventPinchZoom, { passive: false });
     document.addEventListener('gesturestart', (e) => e.preventDefault());
 
     return () => {
       document.removeEventListener('visibilitychange', handleVisibility);
-      document.removeEventListener('touchstart', preventZoom);
+      document.removeEventListener('touchstart', preventPinchZoom);
       if (wakeLockRef.current) wakeLockRef.current.release();
     };
   }, []);
@@ -99,7 +99,7 @@ export default function UjianPage() {
     const preventDefault = (e: Event) => e.preventDefault();
     
     const handleKeyDown = (e: KeyboardEvent) => {
-      const forbiddenKeys = ['F12', 'F11'];
+      const forbiddenKeys = ['F12', 'F11', 'PrintScreen'];
       const ctrlKeys = ['c', 'v', 'u', 'i', 'p', 's', 'j', '+', '-', '0'];
       
       if (forbiddenKeys.includes(e.key) || (e.ctrlKey && ctrlKeys.includes(e.key.toLowerCase())) || (e.metaKey && ctrlKeys.includes(e.key.toLowerCase()))) {
@@ -120,7 +120,7 @@ export default function UjianPage() {
       }
     };
 
-    // Block Mouse Wheel Zoom
+    // Block Mouse Wheel Zoom (Ctrl + Wheel)
     const handleWheel = (e: WheelEvent) => {
       if (e.ctrlKey) {
         e.preventDefault();
@@ -240,7 +240,7 @@ export default function UjianPage() {
     const onWindowBlur = () => { if (!hasSubmitted.current) handleViolation("Layar Kehilangan Fokus (Notifikasi/Sistem)"); };
     
     const onResize = () => {
-      // Detection for Split Screen and Zoom Manipulation
+      // Detection for Split Screen
       const screenHeight = window.screen.availHeight;
       const currentHeight = window.innerHeight;
       const ratio = currentHeight / screenHeight;
@@ -248,21 +248,31 @@ export default function UjianPage() {
       if (ratio < 0.65) {
         handleViolation("Upaya Layar Terbagi (Split Screen)");
       }
-      
-      // Detection for Browser Zoom (Visual Viewport)
-      if (window.visualViewport && window.visualViewport.scale !== 1) {
-        handleViolation("Upaya Perubahan Skala (Zooming) Terdeteksi");
+    };
+
+    // Advanced Zoom Detection via Visual Viewport API
+    const handleViewportChange = () => {
+      if (window.visualViewport && window.visualViewport.scale > 1.05) {
+        handleViolation("Upaya Perbesaran Layar (Zooming) Terdeteksi");
       }
     };
 
     document.addEventListener("visibilitychange", onVisibilityChange);
     window.addEventListener("blur", onWindowBlur);
     window.addEventListener("resize", onResize);
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener("resize", handleViewportChange);
+      window.visualViewport.addEventListener("scroll", handleViewportChange);
+    }
 
     return () => {
       document.removeEventListener("visibilitychange", onVisibilityChange);
       window.removeEventListener("blur", onWindowBlur);
       window.removeEventListener("resize", onResize);
+      if (window.visualViewport) {
+        window.visualViewport.removeEventListener("resize", handleViewportChange);
+        window.visualViewport.removeEventListener("scroll", handleViewportChange);
+      }
     };
   }, [handleSubmit, loading, isSubmitting, attemptLimitReached, role]);
 
@@ -358,14 +368,10 @@ export default function UjianPage() {
       <div className={cn("min-h-screen bg-muted/20 flex flex-col transition-all duration-500", isBlurred && "blur-3xl grayscale pointer-events-none")}>
         
         {/* ENHANCED DIGITAL WATERMARK MATRIX (Mencegah Foto/Scan Layar) */}
-        <div className="watermark-overlay overflow-hidden select-none pointer-events-none fixed inset-0 z-[100] opacity-10 flex flex-wrap justify-center content-center gap-20 md:gap-32">
-          {Array.from({ length: 48 }).map((_, i) => (
-            <div 
-              key={i} 
-              className="text-[10px] md:text-xs font-black text-black whitespace-nowrap uppercase tracking-widest"
-              style={{ transform: `rotate(${-25 + (i % 5)}deg)` }}
-            >
-              {user?.email} • {user?.uid.slice(0, 8)}
+        <div className="watermark-overlay">
+          {Array.from({ length: 120 }).map((_, i) => (
+            <div key={i} className="watermark-text">
+              {user?.email?.split('@')[0]} • {user?.uid.slice(0, 6)}
             </div>
           ))}
         </div>
@@ -426,7 +432,7 @@ export default function UjianPage() {
             </Card>
           </aside>
 
-          <section className="flex-1 flex flex-col gap-4 order-1 lg:order-2 touch-none">
+          <section className="flex-1 flex flex-col gap-4 order-1 lg:order-2 exam-content-area">
             <Card className="border-none shadow-xl flex-1 bg-white relative">
               <CardHeader className="p-5 md:p-8 border-b">
                 <div className="flex items-center justify-between mb-4">
