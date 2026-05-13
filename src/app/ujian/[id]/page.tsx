@@ -159,7 +159,7 @@ export default function UjianPage() {
 
       toast({ 
         title: isAuto ? "PELANGGARAN DETEKSI!" : "Berhasil Dikirim", 
-        description: isAuto ? "Sesi dihentikan karena pindah tab/aplikasi." : "Jawaban Anda telah aman tersimpan.",
+        description: isAuto ? "Sesi dihentikan karena pindah tab, aplikasi, atau layar terbagi." : "Jawaban Anda telah aman tersimpan.",
         variant: isAuto ? "destructive" : "default"
       });
       
@@ -173,6 +173,7 @@ export default function UjianPage() {
     }
   }, [user, examId, questions, answers, db, router, toast]);
 
+  // Anti-Cheat Monitoring (Visibility, Blur, and Resize/Split-Screen)
   useEffect(() => {
     if (loading || isSubmitting || attemptLimitReached || role === 'admin') return;
     
@@ -185,15 +186,34 @@ export default function UjianPage() {
 
     const onVisibilityChange = () => { if (document.hidden) handleViolation(); };
     const onWindowBlur = () => { handleViolation(); };
+    const onResize = () => {
+      // Logic: Detect if window height is unusually small compared to screen,
+      // or if dimensions change during the test (activation of split screen)
+      if (window.innerHeight < window.screen.availHeight * 0.7) {
+        handleViolation();
+      }
+    };
 
     document.addEventListener("visibilitychange", onVisibilityChange);
     window.addEventListener("blur", onWindowBlur);
+    window.addEventListener("resize", onResize);
+
+    // Initial check for split-screen already active
+    if (window.innerHeight < window.screen.availHeight * 0.7) {
+      toast({
+        variant: "destructive",
+        title: "PERINGATAN LAYAR TERBAGI",
+        description: "Ujian tidak dapat dimulai dalam mode layar terbagi (Split Screen).",
+      });
+      handleViolation();
+    }
 
     return () => {
       document.removeEventListener("visibilitychange", onVisibilityChange);
       window.removeEventListener("blur", onWindowBlur);
+      window.removeEventListener("resize", onResize);
     };
-  }, [handleSubmit, loading, isSubmitting, attemptLimitReached, role]);
+  }, [handleSubmit, loading, isSubmitting, attemptLimitReached, role, toast]);
 
   useEffect(() => {
     const fetchData = async () => {
