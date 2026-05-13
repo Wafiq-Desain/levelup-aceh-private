@@ -108,23 +108,34 @@ export default function AdminReportsPage() {
     fetchData();
   }, [fetchData]);
 
-  // ANALYTICS ENGINE: Categorize A, B, C with Duplicate Account Detection
+  // ANALYTICS ENGINE: Categorize A, B, C with Advanced Duplicate Account Detection
   const analyticsData = useMemo(() => {
     if (results.length === 0) return [];
 
     const examResults = selectedExamId === "all" ? results : results.filter(r => r.examId === selectedExamId);
     
-    // Normalization function to find duplicate names (ignore trailing numbers/symbols)
+    /**
+     * NORMALISASI NAMA AGRESIF
+     * 1. Lowercase & Trim
+     * 2. Hapus semua karakter non-huruf (spasi, angka, simbol)
+     * 3. Ciutkan huruf berulang (e.g., 'furqann' -> 'furqan', 'sayedd' -> 'sayed')
+     */
     const normalizeName = (name: string) => {
-      return (name || "").toLowerCase().trim().replace(/[^a-z0-9]/g, '').replace(/[0-9]+$/, '');
+      return (name || "")
+        .toLowerCase()
+        .trim()
+        .replace(/[^a-z]/g, '') // Hanya simpan huruf a-z
+        .replace(/(.)\1+/g, '$1'); // Ganti huruf berulang berurutan menjadi satu huruf saja
     };
 
-    // Map to count similar names
+    // Kelompokkan user berdasarkan kunci normalisasi untuk deteksi nama mirip
     const normalizedNameGroups: Record<string, string[]> = {};
     Object.entries(usersMap).forEach(([uid, profile]) => {
-      const norm = normalizeName(profile.displayName);
-      if (!normalizedNameGroups[norm]) normalizedNameGroups[norm] = [];
-      normalizedNameGroups[norm].push(uid);
+      const normKey = normalizeName(profile.displayName);
+      if (normKey) {
+        if (!normalizedNameGroups[normKey]) normalizedNameGroups[normKey] = [];
+        normalizedNameGroups[normKey].push(uid);
+      }
     });
 
     return examResults.map(res => {
@@ -132,13 +143,13 @@ export default function AdminReportsPage() {
       let riskReasons: string[] = [];
       const studentAnswers = allAnswers.filter(a => a.resultId === res.id);
       
-      // Indicator 1: Speed vs Accuracy
+      // Indikator 1: Kecepatan vs Akurasi (IRT Tinggi tanpa warning HP)
       if (res.totalScore > 90 && res.antiCheatWarningCount === 0) {
         riskScore += 1;
         riskReasons.push("Kecepatan & Akurasi janggal");
       }
 
-      // Indicator 2: Pattern Similarity
+      // Indikator 2: Kemiripan Pola Kesalahan (Mencari kemiripan jawaban salah dengan siswa lain)
       const myWrongAnswers = studentAnswers.filter(a => !a.isCorrect).map(a => `${a.questionId}_${a.chosenAnswerIndex}`);
       let maxSharedWrongs = 0;
       const resultsByExam = results.filter(r => r.examId === res.examId && r.id !== res.id);
@@ -154,22 +165,24 @@ export default function AdminReportsPage() {
         riskReasons.push("Pola kesalahan identik");
       }
       
+      // Indikator 3: Deteksi HP/Fokus Layar
       if (res.antiCheatWarningCount > 0) {
         riskScore += 1;
-        riskReasons.push("Deteksi HP/Layar");
+        riskReasons.push("Pelanggaran Fokus Layar");
       }
 
-      // NEW Indicator 3: Duplicate Account Detection
+      // Indikator 4: Deteksi Akun Ganda (Fuzzy Matching Nama)
       const studentProfile = usersMap[res.studentId];
-      const normName = normalizeName(studentProfile?.displayName || "");
-      const isDuplicateName = normalizedNameGroups[normName] && normalizedNameGroups[normName].length > 1;
+      const normNameKey = normalizeName(studentProfile?.displayName || "");
+      const similarAccounts = normalizedNameGroups[normNameKey] || [];
+      const isDuplicateName = similarAccounts.length > 1;
       
       if (isDuplicateName) {
-        riskScore += 3; // Critical risk
-        riskReasons.push("Indikasi Akun Ganda (Nama Mirip)");
+        riskScore += 3; // Risiko Kritis
+        riskReasons.push(`Indikasi Akun Ganda (${similarAccounts.length} identitas mirip)`);
       }
 
-      // Final Classification
+      // Klasifikasi Akhir
       let category: 'A' | 'B' | 'C' = 'A';
       if (riskScore >= 3) category = 'C';
       else if (riskScore >= 1) category = 'B';
@@ -215,7 +228,7 @@ export default function AdminReportsPage() {
               <Button variant="ghost" size="icon" onClick={() => router.push('/dashboard')}>
                 <ChevronLeft className="h-5 w-5" />
               </Button>
-              <h1 className="text-xl font-bold text-primary">Integritas & Hasil Ujian</h1>
+              <h1 className="text-xl font-bold text-primary">Analisis Integritas</h1>
             </div>
             <div className="flex gap-2">
               <AlertDialog>
@@ -249,7 +262,7 @@ export default function AdminReportsPage() {
             <TabsList className="grid w-full grid-cols-2 max-w-md mx-auto">
               <TabsTrigger value="overview">Daftar Nilai</TabsTrigger>
               <TabsTrigger value="analytics" className="gap-2">
-                <TrendingUp className="h-4 w-4" /> Analisis Integritas
+                <TrendingUp className="h-4 w-4" /> Analisis Kejujuran
               </TabsTrigger>
             </TabsList>
 
@@ -330,8 +343,8 @@ export default function AdminReportsPage() {
               <div className="space-y-6">
                 <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
                   <div>
-                    <h2 className="text-2xl font-black text-primary">KLASIFIKASI KEJUJURAN</h2>
-                    <p className="text-sm text-muted-foreground">Mendeteksi anomali pola jawaban, pengerjaan cepat, dan akun ganda.</p>
+                    <h2 className="text-2xl font-black text-primary uppercase">Klasifikasi Integritas</h2>
+                    <p className="text-sm text-muted-foreground">Mendeteksi kemiripan pola, pengerjaan tidak wajar, dan akun ganda.</p>
                   </div>
                   <Select value={selectedExamId} onValueChange={setSelectedExamId}>
                     <SelectTrigger className="w-full md:w-64 bg-white">
@@ -350,7 +363,7 @@ export default function AdminReportsPage() {
                   <Card className="bg-green-50 border-green-200 border-2">
                     <CardHeader className="pb-2">
                       <div className="flex justify-between items-center">
-                        <CardTitle className="text-green-800 text-sm">KATEGORI A</CardTitle>
+                        <CardTitle className="text-green-800 text-sm">KELAS A</CardTitle>
                         <UserCheck className="h-5 w-5 text-green-600" />
                       </div>
                       <CardDescription className="text-green-600 text-xs">Sangat Dipercaya</CardDescription>
@@ -364,10 +377,10 @@ export default function AdminReportsPage() {
                   <Card className="bg-amber-50 border-amber-200 border-2">
                     <CardHeader className="pb-2">
                       <div className="flex justify-between items-center">
-                        <CardTitle className="text-amber-800 text-sm">KATEGORI B</CardTitle>
+                        <CardTitle className="text-amber-800 text-sm">KELAS B</CardTitle>
                         <AlertCircle className="h-5 w-5 text-amber-600" />
                       </div>
-                      <CardDescription className="text-amber-600 text-xs">Indikasi Ikut Arus</CardDescription>
+                      <CardDescription className="text-amber-600 text-xs">Indikasi Anomali Ringan</CardDescription>
                     </CardHeader>
                     <CardContent>
                       <p className="text-3xl font-black text-amber-800">
@@ -378,10 +391,10 @@ export default function AdminReportsPage() {
                   <Card className="bg-red-50 border-red-200 border-2">
                     <CardHeader className="pb-2">
                       <div className="flex justify-between items-center">
-                        <CardTitle className="text-red-800 text-sm">KATEGORI C</CardTitle>
+                        <CardTitle className="text-red-800 text-sm">KELAS C</CardTitle>
                         <ShieldAlert className="h-5 w-5 text-red-600" />
                       </div>
-                      <CardDescription className="text-red-600 text-xs">Terindikasi Kuat</CardDescription>
+                      <CardDescription className="text-red-600 text-xs">Terindikasi Kuat (Red Flag)</CardDescription>
                     </CardHeader>
                     <CardContent>
                       <p className="text-3xl font-black text-red-800">
@@ -397,9 +410,9 @@ export default function AdminReportsPage() {
                       <TableHeader className="bg-muted/50">
                         <TableRow>
                           <TableHead>SISWA</TableHead>
-                          <TableHead className="text-center">KLASIFIKASI</TableHead>
-                          <TableHead>TEMUAN RISIKO</TableHead>
-                          <TableHead className="text-center">KEMIRIPAN SALAH</TableHead>
+                          <TableHead className="text-center">STATUS</TableHead>
+                          <TableHead>FAKTOR RISIKO</TableHead>
+                          <TableHead className="text-center">KEMIRIPAN JAWABAN</TableHead>
                           <TableHead className="text-center">SKOR</TableHead>
                         </TableRow>
                       </TableHeader>
@@ -422,7 +435,7 @@ export default function AdminReportsPage() {
                                 res.category === 'B' && "bg-amber-500",
                                 res.category === 'C' && "bg-red-600"
                               )}>
-                                KELAS {res.category}
+                                {res.category === 'A' ? 'CLEAN' : res.category === 'B' ? 'WARNED' : 'SUSPECT'}
                               </Badge>
                             </TableCell>
                             <TableCell className="text-xs">
@@ -432,13 +445,13 @@ export default function AdminReportsPage() {
                                     "flex items-center gap-1 font-medium",
                                     res.category === 'C' ? "text-red-700" : "text-amber-700"
                                   )}>
-                                    {reason === "Indikasi Akun Ganda (Nama Mirip)" ? <Copy className="h-3 w-3" /> : <AlertTriangle className="h-3 w-3" />}
+                                    {reason.includes("Akun Ganda") ? <Copy className="h-3 w-3" /> : <AlertTriangle className="h-3 w-3" />}
                                     {reason}
                                   </div>
                                 ))}
                                 {res.riskReasons.length === 0 && (
                                   <div className="text-green-700 flex items-center gap-1">
-                                    <UserCheck className="h-3 w-3" /> Pola pengerjaan natural
+                                    <UserCheck className="h-3 w-3" /> Wajar & Natural
                                   </div>
                                 )}
                               </div>
@@ -446,9 +459,9 @@ export default function AdminReportsPage() {
                             <TableCell className="text-center">
                               <div className="flex flex-col items-center">
                                 <span className={cn("text-lg font-black", res.sharedWrongs >= 3 ? "text-red-600" : "text-muted-foreground")}>
-                                  {res.sharedWrongs} Soal
+                                  {res.sharedWrongs} Opsi
                                 </span>
-                                <span className="text-[8px] uppercase font-bold text-muted-foreground tracking-tighter">Opsi Salah Sama</span>
+                                <span className="text-[8px] uppercase font-bold text-muted-foreground tracking-tighter">Sama-Sama Salah</span>
                               </div>
                             </TableCell>
                             <TableCell className="text-center">
@@ -468,4 +481,3 @@ export default function AdminReportsPage() {
     </ProtectedRoute>
   );
 }
-
