@@ -49,15 +49,10 @@ export default function DashboardPage() {
       const profileSnap = await getDoc(doc(db, "userProfiles", user.uid));
       
       if (role === 'student') {
-        if (!profileSnap.exists()) {
-          router.replace("/complete-profile");
-          return;
-        }
-
-        const data = profileSnap.data();
+        const data = profileSnap.exists() ? profileSnap.data() : null;
         setUserProfile(data);
         
-        // Cek Kelengkapan Biodata (Harus sama dengan CompleteProfilePage)
+        // Match logic with CompleteProfilePage strictly
         const nameComplete = !!(data?.displayName || "").trim();
         const schoolComplete = !!(data?.schoolName || "").trim();
         const isMan2 = (data?.schoolName || "").trim().toLowerCase().includes("man 2");
@@ -120,7 +115,7 @@ export default function DashboardPage() {
       <div className="flex h-screen items-center justify-center bg-white">
         <div className="flex flex-col items-center gap-4">
           <Loader2 className="animate-spin h-10 w-10 text-primary" />
-          <p className="text-sm font-medium text-muted-foreground">Menyiapkan dashboard...</p>
+          <p className="text-sm font-medium text-muted-foreground">Menyiapkan Dashboard...</p>
         </div>
       </div>
     );

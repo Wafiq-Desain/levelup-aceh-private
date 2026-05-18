@@ -31,7 +31,8 @@ import {
   Flag,
   BookOpen,
   AlertTriangle,
-  ShieldAlert
+  ShieldAlert,
+  Loader2
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
@@ -50,17 +51,23 @@ export default function UjianPage() {
   const [answers, setAnswers] = useState<Record<string, { choice: string, isFlagged: boolean }>>({});
   const [isBlurred, setIsBlurred] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [timeLeft, setTimeLeft] = useState(3600);
+  const [timeLeft, setTimeLeft] = useState(0);
   const [startTime, setStartTime] = useState<number | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [attemptLimitReached, setAttemptLimitReached] = useState(false);
+  const [mounted, setMounted] = useState(false);
   
   const hasSubmitted = useRef(false);
   const wakeLockRef = useRef<any>(null);
 
+  // Initialize mounted state to prevent hydration errors
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const requestWakeLock = async () => {
     try {
-      if ('wakeLock' in navigator) {
+      if (typeof window !== 'undefined' && 'wakeLock' in navigator) {
         wakeLockRef.current = await (navigator as any).wakeLock.request('screen');
       }
     } catch (err) {
@@ -69,6 +76,8 @@ export default function UjianPage() {
   };
 
   useEffect(() => {
+    if (!mounted) return;
+    
     requestWakeLock();
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') {
@@ -84,16 +93,19 @@ export default function UjianPage() {
     
     document.addEventListener('visibilitychange', handleVisibility);
     document.addEventListener('touchstart', preventPinchZoom, { passive: false });
-    document.addEventListener('gesturestart', (e) => e.preventDefault());
-
+    
     return () => {
       document.removeEventListener('visibilitychange', handleVisibility);
       document.removeEventListener('touchstart', preventPinchZoom);
-      if (wakeLockRef.current) wakeLockRef.current.release();
+      if (wakeLockRef.current) {
+        try { wakeLockRef.current.release(); } catch(e) {}
+      }
     };
-  }, []);
+  }, [mounted]);
 
   useEffect(() => {
+    if (!mounted) return;
+
     const preventDefault = (e: Event) => e.preventDefault();
     
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -128,7 +140,6 @@ export default function UjianPage() {
     document.addEventListener("keydown", handleKeyDown);
     document.addEventListener("wheel", handleWheel, { passive: false });
     window.addEventListener("beforeunload", handleBeforeUnload);
-    document.body.classList.add("no-select");
 
     window.history.pushState(null, "", window.location.href);
     const handlePopState = () => {
@@ -149,9 +160,8 @@ export default function UjianPage() {
       document.removeEventListener("wheel", handleWheel);
       window.removeEventListener("beforeunload", handleBeforeUnload);
       window.removeEventListener("popstate", handlePopState);
-      document.body.classList.remove("no-select");
     };
-  }, [toast]);
+  }, [toast, mounted]);
 
   const handleSubmit = useCallback(async (isAuto = false, reason = "") => {
     if (!user || !examId || hasSubmitted.current || !startTime) return;
@@ -224,7 +234,7 @@ export default function UjianPage() {
   }, [user, examId, questions, answers, db, router, toast, startTime]);
 
   useEffect(() => {
-    if (loading || isSubmitting || attemptLimitReached || role === 'admin') return;
+    if (!mounted || loading || isSubmitting || attemptLimitReached || role === 'admin') return;
     
     const handleViolation = (reason: string) => {
       if (!hasSubmitted.current) {
@@ -239,7 +249,7 @@ export default function UjianPage() {
     const onResize = () => {
       const screenHeight = window.screen.availHeight;
       const currentHeight = window.innerHeight;
-      if ((currentHeight / screenHeight) < 0.65) handleViolation("Upaya Layar Terbagi (Split Screen)");
+      if (currentHeight > 0 && (currentHeight / screenHeight) < 0.65) handleViolation("Upaya Layar Terbagi (Split Screen)");
     };
 
     const handleViewportChange = () => {
@@ -255,10 +265,13 @@ export default function UjianPage() {
       document.removeEventListener("visibilitychange", onVisibilityChange);
       window.removeEventListener("blur", onWindowBlur);
       window.removeEventListener("resize", onResize);
+      if (window.visualViewport) window.visualViewport.removeEventListener("resize", handleViewportChange);
     };
-  }, [handleSubmit, loading, isSubmitting, attemptLimitReached, role]);
+  }, [handleSubmit, loading, isSubmitting, attemptLimitReached, role, mounted]);
 
   useEffect(() => {
+    if (!mounted) return;
+    
     const fetchData = async () => {
       if (!examId || !user || !role) return;
       try {
@@ -293,10 +306,11 @@ export default function UjianPage() {
       }
     };
     fetchData();
-  }, [examId, user, role, db]);
+  }, [examId, user, role, db, mounted]);
 
   useEffect(() => {
-    if (loading || isSubmitting || attemptLimitReached) return;
+    if (!mounted || loading || isSubmitting || attemptLimitReached || timeLeft <= 0) return;
+    
     const interval = setInterval(() => {
       setTimeLeft(prev => {
         if (prev <= 1) {
@@ -308,7 +322,7 @@ export default function UjianPage() {
       });
     }, 1000);
     return () => clearInterval(interval);
-  }, [loading, isSubmitting, attemptLimitReached, handleSubmit, role]);
+  }, [loading, isSubmitting, attemptLimitReached, handleSubmit, role, mounted, timeLeft]);
 
   const handleSelectAnswer = (value: string) => {
     if (hasSubmitted.current || role === 'admin') return;
@@ -327,7 +341,16 @@ export default function UjianPage() {
     }, { merge: true });
   };
 
-  if (loading) return <div className="flex h-screen items-center justify-center bg-white"><div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary"></div></div>;
+  if (!mounted || loading) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-white">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="h-10 w-10 animate-spin text-primary" />
+          <p className="text-sm font-medium text-muted-foreground">Memuat Lembar Ujian...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (attemptLimitReached) {
     return (
@@ -348,8 +371,8 @@ export default function UjianPage() {
     <ProtectedRoute>
       <div className={cn("min-h-screen bg-muted/20 flex flex-col transition-all duration-500", isBlurred && "blur-3xl grayscale pointer-events-none")}>
         <div className="watermark-overlay">
-          {Array.from({ length: 120 }).map((_, i) => (
-            <div key={i} className="watermark-text">{user?.email?.split('@')[0]} • {user?.uid.slice(0, 6)}</div>
+          {user && Array.from({ length: 60 }).map((_, i) => (
+            <div key={i} className="watermark-text">{user.email?.split('@')[0]} • {user.uid.slice(0, 6)}</div>
           ))}
         </div>
 
@@ -359,7 +382,7 @@ export default function UjianPage() {
               <h2 className="text-xs md:text-sm font-black text-primary truncate max-w-[140px] md:max-w-md uppercase tracking-tight">{exam?.title}</h2>
               <div className="flex items-center gap-1">
                 <ShieldAlert className="h-2.5 w-2.5 text-destructive animate-pulse" />
-                <span className="text-[7px] font-black text-destructive uppercase tracking-tighter">Super Strict Security Active</span>
+                <span className="text-[7px] font-black text-destructive uppercase tracking-tighter">Strict Security Active</span>
               </div>
             </div>
             
