@@ -31,14 +31,14 @@ import {
   Flag,
   BookOpen,
   AlertTriangle,
-  Lock,
   ShieldAlert
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 
 export default function UjianPage() {
-  const { id: examId } = useParams();
+  const params = useParams();
+  const examId = params?.id as string;
   const { user, role } = useAppAuth();
   const db = useFirestore();
   const router = useRouter();
@@ -58,7 +58,6 @@ export default function UjianPage() {
   const hasSubmitted = useRef(false);
   const wakeLockRef = useRef<any>(null);
 
-  // 1. WAKE LOCK & ZOOM BLOCKER
   const requestWakeLock = async () => {
     try {
       if ('wakeLock' in navigator) {
@@ -94,7 +93,6 @@ export default function UjianPage() {
     };
   }, []);
 
-  // 2. INPUT PROTECTION
   useEffect(() => {
     const preventDefault = (e: Event) => e.preventDefault();
     
@@ -121,9 +119,7 @@ export default function UjianPage() {
     };
 
     const handleWheel = (e: WheelEvent) => {
-      if (e.ctrlKey) {
-        e.preventDefault();
-      }
+      if (e.ctrlKey) e.preventDefault();
     };
 
     document.addEventListener("contextmenu", preventDefault);
@@ -157,7 +153,6 @@ export default function UjianPage() {
     };
   }, [toast]);
 
-  // 3. SUBMIT LOGIC
   const handleSubmit = useCallback(async (isAuto = false, reason = "") => {
     if (!user || !examId || hasSubmitted.current || !startTime) return;
     hasSubmitted.current = true;
@@ -228,7 +223,6 @@ export default function UjianPage() {
     }
   }, [user, examId, questions, answers, db, router, toast, startTime]);
 
-  // 4. HP/MOBILE PROTECTION
   useEffect(() => {
     if (loading || isSubmitting || attemptLimitReached || role === 'admin') return;
     
@@ -245,23 +239,17 @@ export default function UjianPage() {
     const onResize = () => {
       const screenHeight = window.screen.availHeight;
       const currentHeight = window.innerHeight;
-      if ((currentHeight / screenHeight) < 0.65) {
-        handleViolation("Upaya Layar Terbagi (Split Screen)");
-      }
+      if ((currentHeight / screenHeight) < 0.65) handleViolation("Upaya Layar Terbagi (Split Screen)");
     };
 
     const handleViewportChange = () => {
-      if (window.visualViewport && window.visualViewport.scale > 1.05) {
-        handleViolation("Upaya Perbesaran Layar (Zooming)");
-      }
+      if (window.visualViewport && window.visualViewport.scale > 1.05) handleViolation("Upaya Perbesaran Layar (Zooming)");
     };
 
     document.addEventListener("visibilitychange", onVisibilityChange);
     window.addEventListener("blur", onWindowBlur);
     window.addEventListener("resize", onResize);
-    if (window.visualViewport) {
-      window.visualViewport.addEventListener("resize", handleViewportChange);
-    }
+    if (window.visualViewport) window.visualViewport.addEventListener("resize", handleViewportChange);
 
     return () => {
       document.removeEventListener("visibilitychange", onVisibilityChange);
@@ -270,7 +258,6 @@ export default function UjianPage() {
     };
   }, [handleSubmit, loading, isSubmitting, attemptLimitReached, role]);
 
-  // 5. FETCH DATA
   useEffect(() => {
     const fetchData = async () => {
       if (!examId || !user || !role) return;
@@ -286,12 +273,12 @@ export default function UjianPage() {
           return;
         }
 
-        const examDoc = await getDoc(doc(db, "exams", examId as string));
+        const examDoc = await getDoc(doc(db, "exams", examId));
         if (examDoc.exists()) {
           const examData = examDoc.data();
           setExam(examData);
           
-          const qSnap = await getDocs(query(collection(db, "exams", examId as string, "questions"), orderBy("createdAt", "asc")));
+          const qSnap = await getDocs(query(collection(db, "exams", examId, "questions"), orderBy("createdAt", "asc")));
           const qList = qSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
           
           let ordered = examData.questionIds ? examData.questionIds.map((id: string) => qList.find(q => q.id === id)).filter(Boolean) : qList;
@@ -308,7 +295,6 @@ export default function UjianPage() {
     fetchData();
   }, [examId, user, role, db]);
 
-  // 6. TIMER
   useEffect(() => {
     if (loading || isSubmitting || attemptLimitReached) return;
     const interval = setInterval(() => {
@@ -331,7 +317,7 @@ export default function UjianPage() {
 
     setAnswers(prev => ({ ...prev, [qId]: { ...prev[qId], choice: value } }));
     
-    const answerRef = doc(db, "users", user!.uid, "examSessions", examId as string, "examAnswers", qId);
+    const answerRef = doc(db, "users", user!.uid, "examSessions", examId, "examAnswers", qId);
     setDocumentNonBlocking(answerRef, {
       id: qId,
       examSessionId: examId,
@@ -361,12 +347,9 @@ export default function UjianPage() {
   return (
     <ProtectedRoute>
       <div className={cn("min-h-screen bg-muted/20 flex flex-col transition-all duration-500", isBlurred && "blur-3xl grayscale pointer-events-none")}>
-        
         <div className="watermark-overlay">
           {Array.from({ length: 120 }).map((_, i) => (
-            <div key={i} className="watermark-text">
-              {user?.email?.split('@')[0]} • {user?.uid.slice(0, 6)}
-            </div>
+            <div key={i} className="watermark-text">{user?.email?.split('@')[0]} • {user?.uid.slice(0, 6)}</div>
           ))}
         </div>
 
@@ -455,27 +438,16 @@ export default function UjianPage() {
               </CardHeader>
 
               <CardContent className="p-4 md:p-8">
-                <RadioGroup 
-                  value={answers[currentQ?.id]?.choice || ""} 
-                  onValueChange={handleSelectAnswer} 
-                  className="space-y-3"
-                >
+                <RadioGroup value={answers[currentQ?.id]?.choice || ""} onValueChange={handleSelectAnswer} className="space-y-3">
                   {currentQ?.options?.map((opt: string, i: number) => {
                     const label = String.fromCharCode(65 + i);
                     const isSelected = answers[currentQ?.id]?.choice === label;
                     return (
-                      <div 
-                        key={`opt-${i}`} 
-                        onClick={() => handleSelectAnswer(label)}
-                        className={cn(
-                          "flex items-center gap-4 p-4 md:p-5 rounded-2xl border-2 cursor-pointer bg-white transition-all",
-                          isSelected ? "border-primary bg-primary/5 shadow-md" : "border-border hover:border-primary/20"
-                        )}
-                      >
-                        <div className={cn(
-                          "w-10 h-10 rounded-xl flex items-center justify-center text-sm font-black border-2",
-                          isSelected ? "bg-primary text-white border-primary" : "bg-muted text-muted-foreground"
-                        )}>
+                      <div key={`opt-${i}`} onClick={() => handleSelectAnswer(label)} className={cn(
+                        "flex items-center gap-4 p-4 md:p-5 rounded-2xl border-2 cursor-pointer bg-white transition-all",
+                        isSelected ? "border-primary bg-primary/5 shadow-md" : "border-border hover:border-primary/20"
+                      )}>
+                        <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center text-sm font-black border-2", isSelected ? "bg-primary text-white border-primary" : "bg-muted text-muted-foreground")}>
                           {label}
                         </div>
                         <div className="flex-1 text-sm md:text-base font-medium">
@@ -488,12 +460,7 @@ export default function UjianPage() {
               </CardContent>
 
               <CardFooter className="p-4 md:p-6 border-t flex justify-between bg-white sticky bottom-0 z-10">
-                <Button 
-                  variant="outline" 
-                  onClick={() => setCurrentIndex(p => Math.max(0, p - 1))} 
-                  disabled={currentIndex === 0}
-                  className="font-bold text-xs h-11"
-                >
+                <Button variant="outline" onClick={() => setCurrentIndex(p => Math.max(0, p - 1))} disabled={currentIndex === 0} className="font-bold text-xs h-11">
                   <ChevronLeft className="h-4 w-4 mr-1" /> KEMBALI
                 </Button>
                 {currentIndex < questions.length - 1 ? (
