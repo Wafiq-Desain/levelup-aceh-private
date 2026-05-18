@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from "react";
@@ -23,6 +22,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/componen
 import { LatexRenderer } from "@/components/LatexRenderer";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Progress } from "@/components/ui/progress";
+import { Badge } from "@/components/ui/badge";
 import { 
   Clock, 
   ChevronLeft, 
@@ -60,7 +60,6 @@ export default function UjianPage() {
   const hasSubmitted = useRef(false);
   const wakeLockRef = useRef<any>(null);
 
-  // Initialize mounted state to prevent hydration errors
   useEffect(() => {
     setMounted(true);
   }, []);
